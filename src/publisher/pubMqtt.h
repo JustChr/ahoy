@@ -38,7 +38,35 @@ typedef struct {
     uint8_t lastIvId;
     uint8_t sub;
     uint8_t foundIvCnt;
+    bool diag;          // discovery for the DTU's own system/WiFi diagnostics
+    uint8_t diagSub;
 } discovery_t;
+
+// HA discovery for the DTU's own system / WiFi diagnostics (published as <topic>/<subtopic>
+// in tickerMinute()/onConnect() but without a discovery config, so they never auto-appear).
+// plat: 0 = both, 1 = ESP8266 only, 2 = ESP32 only
+typedef struct {
+    uint8_t     subId;      // index into subtopics[]
+    const char* name;
+    const char* devCls;     // HA device_class or nullptr
+    const char* stateCls;   // HA state_class or nullptr
+    const char* unit;       // unit_of_measurement or nullptr
+    const char* icon;       // mdi icon or nullptr
+    bool        periodic;   // value refreshes every minute -> add expire_after
+    uint8_t     plat;
+} diagInfo_t;
+
+const diagInfo_t diagList[] = {
+    {MQTT_UPTIME,           "Uptime",                 "duration",        "measurement",      "s",     nullptr,           true,  0},
+    {MQTT_RSSI,             "WiFi RSSI",              "signal_strength", "measurement",      "dBm",   nullptr,           true,  0},
+    {MQTT_FREE_HEAP,        "Free Heap",              "data_size",       "measurement",      "B",     nullptr,           true,  0},
+    {MQTT_HEAP_FRAG,        "Heap Fragmentation",     nullptr,           "measurement",      "%",     "mdi:memory",      true,  1},
+    {MQTT_WIFI_RECONNECTS,  "WiFi Reconnects",        nullptr,           "total_increasing", nullptr, "mdi:wifi-sync",   false, 0},
+    {MQTT_WIFI_DISC_REASON, "WiFi Disconnect Reason", nullptr,           nullptr,            nullptr, "mdi:wifi-alert",  false, 1},
+    {MQTT_IP_ADDR,          "IP Address",             nullptr,           nullptr,            nullptr, "mdi:ip-network",  false, 0},
+    {MQTT_VERSION,          "Version",                nullptr,           nullptr,            nullptr, "mdi:numeric",     false, 0},
+};
+#define DIAG_LIST_LEN   (sizeof(diagList) / sizeof(diagInfo_t))
 
 template<class HMSYSTEM>
 class PubMqtt {
@@ -273,6 +301,8 @@ class PubMqtt {
             mDiscovery.lastIvId = 0;
             mDiscovery.sub = 0;
             mDiscovery.foundIvCnt = 0;
+            mDiscovery.diag = false;
+            mDiscovery.diagSub = 0;
         }
 
         void setPowerLimitAck(Inverter<> *iv) {
@@ -406,6 +436,11 @@ class PubMqtt {
         }
 
         void discoveryConfigLoop(void) {
+            if(mDiscovery.diag) {
+                discoveryDiagnostics();
+                return;
+            }
+
             DynamicJsonDocument doc(256);
 
             constexpr static uint8_t fldTotal[] = {FLD_PAC, FLD_YT, FLD_YD, FLD_PDC};
@@ -526,9 +561,69 @@ class PubMqtt {
             if(++mDiscovery.lastIvId == MAX_NUM_INVERTERS) {
                 // check if only one inverter was found, then don't create 'total' sensor
                 if(mDiscovery.foundIvCnt == 1)
-                    mDiscovery.running = false;
+                    startDiscoveryDiagnostics();
             } else if(mDiscovery.lastIvId == (MAX_NUM_INVERTERS + 1))
+                startDiscoveryDiagnostics();
+        }
+
+        void startDiscoveryDiagnostics(void) {
+            // inverter discovery done -> continue with the DTU's own diagnostics
+            mDiscovery.diag = true;
+            mDiscovery.diagSub = 0;
+        }
+
+        void discoveryDiagnostics(void) {
+            if(mDiscovery.diagSub >= DIAG_LIST_LEN) {
+                mDiscovery.diag = false;
                 mDiscovery.running = false;
+                return;
+            }
+
+            const diagInfo_t *d = &diagList[mDiscovery.diagSub];
+            #if defined(ESP32)
+            bool platOk = (d->plat != 1);
+            #else
+            bool platOk = (d->plat != 2);
+            #endif
+
+            if(platOk) {
+                DynamicJsonDocument doc(512);
+                doc[F("name")] = d->name;
+                doc[F("stat_t")] = String(mCfgMqtt->topic) + "/" + String(subtopics[d->subId]);
+                doc[F("uniq_id")] = String(mDevName) + "_" + String(subtopics[d->subId]);
+                doc[F("ent_cat")] = F("diagnostic");
+                if(nullptr != d->unit)     doc[F("unit_of_meas")] = d->unit;
+                if(nullptr != d->devCls)   doc[F("dev_cla")] = d->devCls;
+                if(nullptr != d->stateCls) doc[F("stat_cla")] = d->stateCls;
+                if(nullptr != d->icon)     doc[F("ic")] = d->icon;
+                if(d->periodic)            doc[F("exp_aft")] = 130;  // refreshed every minute
+
+                JsonObject dev = doc.createNestedObject(F("dev"));
+                dev[F("ids")] = String(mDevName) + "_DTU";
+                dev[F("name")] = mDevName;
+                dev[F("mf")] = F("Ahoy");
+                dev[F("cu")] = F("http://") + mApp->getIp();
+                dev[F("sw")] = mVersion;
+
+                std::array<char, 96> topic;
+                std::array<char, 384> buf;
+                topic.fill(0);
+                buf.fill(0);
+                snprintf(topic.data(), topic.size(), "%s/sensor/%s/%s/config", MQTT_DISCOVERY_PREFIX, mDevName, subtopics[d->subId]);
+
+                size_t size = measureJson(doc) + 1;
+                if(size <= buf.size()) {
+                    serializeJson(doc, buf.data(), size);
+                    publish(topic.data(), buf.data(), true, false);
+                }
+            }
+
+            if(++mDiscovery.diagSub >= DIAG_LIST_LEN) {
+                mDiscovery.diag = false;
+                mDiscovery.running = false;
+            }
+
+            yield();
         }
 
         const char *getFieldDeviceClass(uint8_t fieldId) {
@@ -773,7 +868,7 @@ class PubMqtt {
         std::array<char, (MQTT_TOPIC_LEN + 32 + MAX_NAME_LENGTH + 1)> mTopic;
         std::array<char, (32 + MAX_NAME_LENGTH + 1)> mSubTopic;
         std::array<char, 100> mVal;
-        discovery_t mDiscovery = {true, 0, 0, 0};
+        discovery_t mDiscovery = {true, 0, 0, 0, false, 0};
 };
 
 #endif /*ENABLE_MQTT*/
