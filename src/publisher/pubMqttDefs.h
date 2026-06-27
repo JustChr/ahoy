@@ -57,7 +57,9 @@ enum {
     MQTT_LWT_ONLINE,
     MQTT_LWT_OFFLINE,
     MQTT_ACK_PWR_LMT,
-    MQTT_TEMP_SENS_C
+    MQTT_TEMP_SENS_C,
+    MQTT_WIFI_RECONNECTS,
+    MQTT_WIFI_DISC_REASON
 };
 
 const char* const subtopics[] PROGMEM = {
@@ -78,7 +80,9 @@ const char* const subtopics[] PROGMEM = {
     "connected",
     "not_connected",
     "ack_pwr_limit",
-    "cpu_temp"
+    "cpu_temp",
+    "wifi_reconnects",
+    "wifi_disc_reason"
 };
 
 enum {

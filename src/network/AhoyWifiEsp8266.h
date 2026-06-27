@@ -16,10 +16,20 @@
 class AhoyWifi : public AhoyNetwork {
     public:
         void begin() override {
+            // don't write the WiFi config to flash on every WiFi.begin() (flash wear + latency)
+            WiFi.persistent(false);
+            // keep the radio fully awake: modem-sleep is a common cause of silent drops on ESP8266
+            WiFi.setSleepMode(WIFI_NONE_SLEEP);
+            // our state machine owns reconnects; don't let the SDK silently retry the same
+            // (possibly steering) BSSID behind our back
+            WiFi.setAutoReconnect(false);
+
             mAp.enable();
 
             WiFi.setHostname(mConfig->sys.deviceName);
             mBSSIDList.clear();
+
+            mLastOnlineMs = millis(); // start the offline-reboot watchdog from boot
         }
 
         void tickNetworkLoop() override {
@@ -29,11 +39,25 @@ class AhoyWifi : public AhoyNetwork {
 
             mCnt++;
 
+            #if !defined(AP_ONLY)
+            // last-resort recovery: if we cannot get back online for a long time, reboot.
+            // skip while a client is using the soft-AP (e.g. someone is configuring the DTU).
+            if((millis() - mLastOnlineMs) >= OFFLINE_REBOOT_MS) {
+                if(WiFi.softAPgetStationNum() == 0) {
+                    DBGPRINTLN(F("offline too long, rebooting"));
+                    Serial.flush();
+                    ESP.restart();
+                } else
+                    mLastOnlineMs = millis(); // postpone while AP is in use
+            }
+            #endif
+
             switch(mStatus) {
                 case NetworkState::DISCONNECTED:
                     if(mConnected) {
                         mConnected = false;
                         mWifiConnecting = false;
+                        mWifiReconnects++;
                         mOnNetworkCB(false);
                         mAp.enable();
                         MDNS.end();
@@ -75,10 +99,11 @@ class AhoyWifi : public AhoyNetwork {
                     setStaticIp();
                     WiFi.begin(mConfig->sys.stationSsid, mConfig->sys.stationPwd, 0, &bssid[0]);
                     mWifiConnecting = true;
+                    mConnectStartMs = millis(); // real elapsed-time timeout for this attempt
                     break;
 
                 case NetworkState::CONNECTING:
-                    if (isTimeout(TIMEOUT)) {
+                    if ((millis() - mConnectStartMs) >= CONNECT_TIMEOUT_MS) {
                         WiFi.disconnect();
                         mWifiConnecting = false;
                         mStatus = mBSSIDList.empty() ? NetworkState::DISCONNECTED : NetworkState::SCAN_READY;
@@ -89,6 +114,17 @@ class AhoyWifi : public AhoyNetwork {
                     break;
 
                 case NetworkState::GOT_IP:
+                    // backstop watchdog: catch a silent link loss where the SDK never fires
+                    // STA_DISCONNECTED. Without this the state machine stays in GOT_IP forever.
+                    if(WiFi.status() != WL_CONNECTED) {
+                        if((millis() - mLastOnlineMs) >= LINK_LOST_TIMEOUT_MS) {
+                            DBGPRINTLN(F("link lost without event, forcing reconnect"));
+                            mStatus = NetworkState::DISCONNECTED;
+                            break;
+                        }
+                    } else
+                        mLastOnlineMs = millis();
+
                     if(!mConnected) {
                         mAp.disable();
                         mConnected = true;
@@ -127,6 +163,15 @@ class AhoyWifi : public AhoyNetwork {
             });
         }
 
+        void pushBSSID(const uint8_t *bssid) {
+            DBGPRINT(F("BSSID:"));
+            for (int j = 0; j < 6; j++) {
+                DBGPRINT(" " + String(bssid[j], HEX));
+                mBSSIDList.push_back(bssid[j]);
+            }
+            DBGPRINTLN("");
+        }
+
         bool getBSSIDs() {
             bool result = false;
             int n = WiFi.scanComplete();
@@ -138,15 +183,18 @@ class AhoyWifi : public AhoyNetwork {
                 mBSSIDList.clear();
                 int sort[n];
                 sortRSSI(&sort[0], n);
+                int deferred = -1; // index of the node that just dropped us (try it last)
                 for (int i = 0; i < n; i++) {
-                    DBGPRINT("BSSID " + String(i) + ":");
-                    uint8_t *bssid = WiFi.BSSID(sort[i]);
-                    for (int j = 0; j < 6; j++){
-                        DBGPRINT(" " + String(bssid[j], HEX));
-                        mBSSIDList.push_back(bssid[j]);
+                    if(mBadBssidValid && (0 == memcmp(WiFi.BSSID(sort[i]), mBadBssid, 6)) && (n > 1)) {
+                        deferred = sort[i];
+                        continue;
                     }
-                    DBGPRINTLN("");
+                    pushBSSID(WiFi.BSSID(sort[i]));
                 }
+                if(deferred >= 0) // append as last resort so it's never fully excluded
+                    pushBSSID(WiFi.BSSID(deferred));
+
+                mBadBssidValid = false; // only deprioritize for this one reconnect cycle
                 result = true;
             }
             mScanActive = false;
@@ -154,17 +202,16 @@ class AhoyWifi : public AhoyNetwork {
             return result;
         }
 
-        bool isTimeout(uint8_t timeout) {
-            return ((mCnt % timeout) == 0);
-        }
-
     private:
         uint8_t mCnt = 0;
         uint8_t mScanCnt = 0;
         std::list<uint8_t> mBSSIDList;
         bool mWasInCh12to14 = false;
-        static constexpr uint8_t TIMEOUT = 20;
-        static constexpr uint8_t SCAN_TIMEOUT = 10;
+        uint32_t mConnectStartMs = 0;   // start of the current connect attempt
+        uint32_t mLastOnlineMs = 0;     // last time we were confirmed online (WL_CONNECTED)
+        static constexpr uint32_t CONNECT_TIMEOUT_MS  = 20000;  // per connect attempt
+        static constexpr uint32_t LINK_LOST_TIMEOUT_MS = 30000; // silent link loss before forced reconnect
+        static constexpr uint32_t OFFLINE_REBOOT_MS   = 300000; // 5 min offline -> reboot
 };
 
 #endif /*ESP8266*/

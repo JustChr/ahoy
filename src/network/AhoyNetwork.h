@@ -47,6 +47,11 @@ class AhoyNetwork {
             });
             wifiDisconnectHandler = WiFi.onStationModeDisconnected(
                 [this](const WiFiEventStationModeDisconnected& event) -> void {
+                // keep the reason and which BSSID dropped us, so the reconnect logic can
+                // deprioritize a mesh node that just steered/deauthed us (FRITZ! Mesh)
+                mLastDisconnectReason = (uint8_t)event.reason;
+                memcpy(mBadBssid, event.bssid, 6);
+                mBadBssidValid = true;
                 OnEvent((WiFiEvent_t)SYSTEM_EVENT_STA_DISCONNECTED);
             });
             #endif
@@ -131,6 +136,14 @@ class AhoyNetwork {
 
         virtual bool getWasInCh12to14() {
             return false;
+        }
+
+        uint8_t getLastDisconnectReason() const {
+            return mLastDisconnectReason;
+        }
+
+        uint16_t getWifiReconnectCnt() const {
+            return mWifiReconnects;
         }
 
         virtual bool isWiredConnection() {
@@ -281,6 +294,11 @@ class AhoyNetwork {
         bool mScanActive = false;
         bool mWifiConnecting = false;
         uint8_t mNtpTimeoutSec = 0;
+
+        uint8_t mLastDisconnectReason = 0;  // last WiFi disconnect reason code (ESP8266)
+        uint16_t mWifiReconnects = 0;       // number of reconnect cycles since boot
+        uint8_t mBadBssid[6] = {0};         // BSSID that last dropped us (mesh node to avoid)
+        bool mBadBssidValid = false;
 
         OnNetworkCB mOnNetworkCB;
         OnTimeCB mOnTimeCB;

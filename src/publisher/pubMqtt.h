@@ -166,7 +166,9 @@ class PubMqtt {
             publish(subtopics[MQTT_TEMP_SENS_C], mVal.data());
             #else
             publish(subtopics[MQTT_HEAP_FRAG], String(ESP.getHeapFragmentation()).c_str());
+            publish(subtopics[MQTT_WIFI_DISC_REASON], String(mApp->getWifiDisconnectReason()).c_str());
             #endif
+            publish(subtopics[MQTT_WIFI_RECONNECTS], String(mApp->getWifiReconnectCnt()).c_str());
         }
 
         bool tickerSun(uint32_t sunrise, uint32_t sunset, int16_t offsM, int16_t offsE, bool isSunrise = false) {

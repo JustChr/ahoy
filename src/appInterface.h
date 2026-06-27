@@ -31,6 +31,8 @@ class IApp {
         virtual bool getAvailNetworks(JsonObject obj) = 0;
         virtual void setupStation(void) = 0;
         virtual bool getWasInCh12to14(void) const = 0;
+        virtual uint8_t getWifiDisconnectReason(void) const = 0;
+        virtual uint16_t getWifiReconnectCnt(void) const = 0;
         virtual String getIp(void) = 0;
         virtual String getMac(void) = 0;
         virtual bool isApActive(void) = 0;

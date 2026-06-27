@@ -183,6 +183,14 @@ class app : public IApp, public ah::Scheduler {
             #endif
         }
 
+        uint8_t getWifiDisconnectReason(void) const override {
+            return mNetwork->getLastDisconnectReason();
+        }
+
+        uint16_t getWifiReconnectCnt(void) const override {
+            return mNetwork->getWifiReconnectCnt();
+        }
+
         String getIp(void) override {
             return mNetwork->getIp();
         }
