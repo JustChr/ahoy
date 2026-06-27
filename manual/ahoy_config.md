@@ -54,9 +54,9 @@ The S.Nr is a 12-digit number. Check [here (german)](https://github.com/lumapu/a
 
 #### set pv-modules (not necessary)
 Click on "Add Inverter" and enter the S.No. and a name. Please keep the name short!
-![grafik](https://github.com/lumapu/ahoy/doc/screenshots/settings.png)
+![grafik](https://github.com/JustChr/ahoy/blob/main/doc/screenshots/settings.png?raw=true)
 
-![grafik](https://github.com/lumapu/ahoy/doc/screenshots/inverterSettings.png)
+![grafik](https://github.com/JustChr/ahoy/blob/main/doc/screenshots/inverterSettings.png?raw=true)
 
 In the upper tab "Inputs" you can enter the data of the solar modules. These are only used directly in Ahoy for calculation and have no influence on the inverter.
 

@@ -1535,8 +1535,8 @@
                 },
                 {
                     "token": "OPEN_ISSUE",
-                    "en": "Please open a new issue at https://github.com/lumapu/ahoy and copy the raw data into it",
-                    "de": "Bitte erstelle einen neuen Issue auf https://github.com/lumapu/ahoy und kopiere die Rohdaten hinein"
+                    "en": "Please open a new issue at https://github.com/JustChr/ahoy and copy the raw data into it",
+                    "de": "Bitte erstelle einen neuen Issue auf https://github.com/JustChr/ahoy und kopiere die Rohdaten hinein"
                 },
                 {
                     "token": "PROFILE_MODAL",

@@ -181,10 +181,13 @@ You can either create your own firmware using your configuration or use one of o
 
 Are you ready to flash? Then go to next Step here.
 
-### Flash from your browser (easy)
+### Flash the firmware
 
-The easiest step for you is to flash online. A browser MS Edge or Google Chrome is required.
-[Here you go](https://ahoydtu.de/web_install/)
+This fork does not host an online web installer. Download the latest `.bin` from
+[Releases](https://github.com/JustChr/ahoy/releases/latest) and flash it following
+[Updating.md](Updating.md) (curl method recommended for this ESP8266; browser `/update` also works).
+
+> The upstream project still offers an online installer at https://ahoydtu.de/web_install/ if you prefer it for a first flash.
 
 ### Compiling your own Version (expert)
 This information is for those who wish to configure and build their own firmware.

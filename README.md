@@ -10,60 +10,50 @@ This work is licensed under a
 [cc-by-nc-sa-image]: https://licensebuttons.net/l/by-nc-sa/4.0/88x31.png
 [cc-by-nc-sa-shield]: https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg
 
-[release-action-badge]: https://github.com/lumapu/ahoy/actions/workflows/compile_release.yml/badge.svg
-[release-action-link]: https://github.com/lumapu/ahoy/actions/workflows/compile_release.yml
+[release-action-badge]: https://github.com/JustChr/ahoy/actions/workflows/compile_release.yml/badge.svg
+[release-action-link]: https://github.com/JustChr/ahoy/actions/workflows/compile_release.yml
 
-[dev-action-badge]: https://github.com/lumapu/ahoy/actions/workflows/compile_development.yml/badge.svg
-[dev-action-link]: https://github.com/lumapu/ahoy/actions/workflows/compile_development.yml
+[dev-action-badge]: https://github.com/JustChr/ahoy/actions/workflows/compile_development.yml/badge.svg
+[dev-action-link]: https://github.com/JustChr/ahoy/actions/workflows/compile_development.yml
 
 
-# 🖐 Ahoy!
-![Logo](https://github.com/lumapu/ahoy/blob/main/doc/logo1_small.png?raw=true)
+# 🖐 Ahoy! — JustChr fork
+![Logo](https://github.com/JustChr/ahoy/blob/main/doc/logo1_small.png?raw=true)
 
-This repository provides hardware and software solutions for communicating with Hoymiles inverters via radio. Our system allows you to easily obtain real-time values, such as power, current, and daily energy, as well as set parameters like the power limit of your inverter to achieve zero export. You can access these functionalities through our user-friendly web interface, MQTT, or JSON. Our solutions simplify the process of monitoring and fine-tuning your solar panel system to help you achieve your goals.
+A personal fork of [AhoyDTU](https://github.com/lumapu/ahoy) tuned for **one specific setup: an ESP8266 DTU feeding a Hoymiles micro-inverter's data into Home Assistant over MQTT**, on an AVM FRITZ! Mesh network. Upstream AhoyDTU is a general-purpose project supporting many boards; this fork narrows the focus to keep that one path rock-solid.
+
+> **Based on [lumapu/ahoy](https://github.com/lumapu/ahoy)** and licensed under CC BY-NC-SA 4.0. All credit for the original work goes to the AhoyDTU project and its contributors. This fork only repoints links/docs to its own repo and hardens the ESP8266 + Home Assistant path.
+
+## What's different in this fork
+- **ESP8266 WiFi self-healing** for FRITZ! Mesh: link-loss backstop watchdog, mesh-aware BSSID handling, no reliance on a nightly reboot (since v0.8.157). See [src/CHANGES.md](src/CHANGES.md).
+- **MQTT WiFi diagnostics** (`wifi_reconnects`, `wifi_disc_reason`) for monitoring stability in Home Assistant.
+- **Fork-hosted releases & update-check** — the web UI checks `JustChr/ahoy` for new versions and the Downloads link points at this repo's [Releases](https://github.com/JustChr/ahoy/releases/latest).
+- A documented, reliable **flashing procedure** for this device — see [manual/Updating.md](manual/Updating.md).
+
+This fork builds the **`esp8266`** environment only. For any other board, use [upstream AhoyDTU](https://github.com/lumapu/ahoy) instead.
 
 ## Changelog
-[latest Release](https://github.com/lumapu/ahoy/blob/main/src/CHANGES.md)
-
-[Development Version](https://github.com/lumapu/ahoy/blob/development03/src/CHANGES.md)
-
-
-Table of approaches:
-
-| Board  | MI | HM | HMS/HMT | comment | HowTo start |
-| ------ | -- | -- | ------- | ------- | ---------- |
-| [ESP32, C++](manual/Getting_Started.md) | ✔️ | ✔️ | ✔️ |  [create your own DTU](https://ahoydtu.de/getting_started/) |
-| ESP8266, C++ | ✔️ | ✔️ | ❌ | ⚠️ not recommended for new DTU |
-
-
-⚠️ **Warning: HMS-XXXXW-2T WiFi inverters are not supported. They have a 'W' in their name and a DTU serial number on its sticker**
+[Latest release notes](https://github.com/JustChr/ahoy/blob/main/src/CHANGES.md)
 
 ## Getting Started
-1. [Guide how to start with a ESP module](manual/Getting_Started.md)
+1. [Guide: start with an ESP module](manual/Getting_Started.md)
+2. [Ahoy Configuration](manual/ahoy_config.md)
+3. [Building & updating the firmware](manual/Updating.md)
+4. [Home Assistant integration](tools/homeassistant/README.md)
 
-2. [ESP Webinstaller (Edge / Chrome Browser only)](https://ahoydtu.de/web_install)
+## Hardware
+| Board | MI | HM | HMS/HMT | comment |
+| ----- | -- | -- | ------- | ------- |
+| ESP8266 + nRF24L01+, C++ | ✔️ | ✔️ | ❌ | the board this fork targets |
 
-3. [Ahoy Configuration ](manual/ahoy_config.md)
+⚠️ **HMS-XXXXW-2T WiFi inverters are not supported** (they have a 'W' in the name and a DTU serial on the sticker).
 
-## Our Website
-[https://ahoydtu.de](https://ahoydtu.de)
+## Roadmap
+See [ROADMAP.md](ROADMAP.md) for planned Home Assistant and ESP8266 stability work.
 
-[Firmware Archive https://fw.ahoydtu.de](https://fw.ahoydtu.de)
-
-## Success Stories
-- [Getting the data into influxDB and visualize them in a Grafana Dashboard](https://grafana.com/grafana/dashboards/16850-pv-power-ahoy/) (thx @Carl)
-
-## Support, Feedback, Information and Discussion
-- [Discord Server (~ 7.300 Users)](https://discord.gg/WzhxEY62mB)
-- [The root of development](https://www.mikrocontroller.net/topic/525778)
-
-### Development
-If you encounter any problems, use the issue tracker on Github. Provide a detailed description of the issue and consider if it is related to our software. This will help us provide effective solutions.
-
-**Contributors are always welcome!**
+## Support & issues
+Use this repo's [issue tracker](https://github.com/JustChr/ahoy/issues). For the wider community and the original project, see [upstream AhoyDTU](https://github.com/lumapu/ahoy) and its [Discord](https://discord.gg/WzhxEY62mB).
 
 ### Related Projects
-- [OpenDTU](https://github.com/tbnobody/OpenDTU)
-  <- Our sister project ✨ for Hoymiles HM- and HMS-/HMT-series (for ESP32 only!)
-- [hms-mqtt-publisher](https://github.com/DennisOSRM/hms-mqtt-publisher)
-  <- a project which can handle WiFi inverters like HMS-XXXXW-2T
+- [OpenDTU](https://github.com/tbnobody/OpenDTU) — sister project for Hoymiles HM- and HMS-/HMT-series (ESP32 only).
+- [hms-mqtt-publisher](https://github.com/DennisOSRM/hms-mqtt-publisher) — for WiFi inverters like HMS-XXXXW-2T.

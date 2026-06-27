@@ -358,7 +358,7 @@ Send Power Limit:
 - If the DC voltage is missing for a few seconds, the microcontroller in the inverter goes off and forgets everything that was temporary/non-persistent in the RAM: YieldDay, error memory, non-persistent limit.
 ### Update your AHOY-DTU Firmware
 To update your AHOY-DTU, you have to download the latest firmware package.
-Here are the [latest stable releases](https://github.com/lumapu/ahoy/releases/) and [latest development builds](https://fw.ahoydtu.de/dev) available for download.
+Here are the [latest releases](https://github.com/JustChr/ahoy/releases/latest) available for download. See [Updating.md](Updating.md) for the recommended (curl) flashing procedure on this ESP8266.
 As soon as you have downloaded the firmware package, unzip it. On the WebUI, navigate to Update and press on select firmware file.
 From the unzipped files, select the right .bin file for your hardware and needs.
 - If you use an ESP8266, select the file ending with esp8266.bin 

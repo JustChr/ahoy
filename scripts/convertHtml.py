@@ -131,7 +131,7 @@ def htmlParts(file, header, nav, footer, versionPath, lang):
 
     #placeholders
     version = readVersion(versionPath);
-    link = '<a target="_blank" href="https://github.com/lumapu/ahoy/commits/' + get_git_sha() + '">GIT SHA: ' + get_git_sha() + ' :: ' + version + '</a>'
+    link = '<a target="_blank" href="https://github.com/JustChr/ahoy/commits/' + get_git_sha() + '">GIT SHA: ' + get_git_sha() + ' :: ' + version + '</a>'
     p = ""
     for line in linesMod:
         p += line

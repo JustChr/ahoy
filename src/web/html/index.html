@@ -23,12 +23,10 @@
                 <div id="note">
                     <h3>{#SUPPORT}:</h3>
                     <ul>
-                        <li><a href="https://github.com/lumapu/ahoy/blob/main/src/CHANGES.md" target="_blank">{#CHANGELOG}</a></li>
-                        <li>{#DISCUSS} <a href="https://discord.gg/WzhxEY62mB" target="_blank">Discord</a></li>
-                        <li>{#REPORT} <a href="https://github.com/lumapu/ahoy/issues" target="_blank">{#ISSUES}</a></li>
-                        <li>{#CONTRIBUTE} <a href="https://docs.ahoydtu.de"  target="_blank">{#DOCUMENTATION}</a></li>
-                        <li><a href="https://fw.ahoydtu.de/fw/dev/" target="_blank">Download</a> & Test {#DEV_FIRMWARE}, <a href="https://github.com/lumapu/ahoy/blob/development03/src/CHANGES.md" target="_blank">{#DEV_CHANGELOG}</a></li>
-                        <li>{#DON_MAKE} <a href="https://paypal.me/lupusch"  target="_blank">{#DONATION}</a></li>
+                        <li><a href="https://github.com/JustChr/ahoy/blob/main/src/CHANGES.md" target="_blank">{#CHANGELOG}</a></li>
+                        <li>{#REPORT} <a href="https://github.com/JustChr/ahoy/issues" target="_blank">{#ISSUES}</a></li>
+                        <li>{#CONTRIBUTE} <a href="https://github.com/JustChr/ahoy"  target="_blank">{#DOCUMENTATION}</a></li>
+                        <li><a href="https://github.com/JustChr/ahoy/releases/latest" target="_blank">Download</a> {#DEV_FIRMWARE}</li>
                     </ul>
                 </div>
             </div>
@@ -214,7 +212,7 @@
                     if(exeOnce) {
                         window.setInterval("tick()", 1000);
                         exeOnce = false;
-                        getAjax("https://api.github.com/repos/lumapu/ahoy/releases/latest", parseRelease);
+                        getAjax("https://api.github.com/repos/JustChr/ahoy/releases/latest", parseRelease);
                     }
                 }
             }
