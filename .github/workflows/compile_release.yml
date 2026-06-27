@@ -128,7 +128,7 @@ jobs:
         artifactErrorsFailBuild: true
         skipIfReleaseExists: true
         bodyFile: src/CHANGES.md
-        artifacts: '${{ steps.version_name.outputs.name }}.zip'
+        artifacts: '${{ steps.version_name.outputs.name }}.zip,${{ steps.version_name.outputs.name }}/ESP8266/*.bin'
         tag: ${{ steps.version_name.outputs.name }}
         name: ${{ steps.version_name.outputs.name }}
         token: ${{ secrets.GITHUB_TOKEN }}

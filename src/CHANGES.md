@@ -1,3 +1,10 @@
+Changelog v0.8.157 (JustChr fork)
+
+* ESP8266 WiFi: self-heal from drops without the nightly reboot; cooperate with FRITZ! Mesh steering (no modem sleep, state-machine owns reconnects, link-loss + offline-reboot watchdogs, BSSID deprioritization)
+* MQTT diagnostics: wifi_reconnects, wifi_disc_reason
+* web update page: XHR upload with progress + error reporting (no more silent hang); Downloads link points to this fork's GitHub releases
+* CI: build/release on this fork; releases also attach the raw esp8266 .bin
+
 Changelog v0.8.156
 
 * add HMS1000-2T with leading 1410 serial number #1845

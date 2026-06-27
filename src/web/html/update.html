@@ -17,7 +17,7 @@
                     </form>
                 </fieldset>
                 <div class="row mt-4">
-                    <a href="https://fw.ahoydtu.de" target="_blank">{#DOWNLOADS}</a>
+                    <a href="https://github.com/JustChr/ahoy/releases/latest" target="_blank">{#DOWNLOADS}</a>
                 </div>
             </div>
         </div>
@@ -51,9 +51,20 @@
 
             function hide() {
                 let fw = document.getElementsByName("update")[0].value
-                var bin = fw.slice(-env.length-4, -4)
-                let ver = fw.split("_")[2].split(".")
-                if (bin !== env) {
+                // be tolerant of filenames that don't follow the CI naming scheme
+                let parts = fw.split("_")
+                let bin = (env && fw.length >= env.length + 4) ? fw.slice(-env.length-4, -4) : ""
+                let ver = (parts.length > 2) ? parts[2].split(".") : null
+
+                if (ver && ver[1] == "9") {
+                    var html = ml("div", {class: "row"}, [
+                        ml("div", {class: "row my-3"}, "{#ERROR_UPGRADE_NOT_POSSIBLE}"),
+                        ml("div", {class: "row"}, [
+                            ml("div", {class: "col-6"}, ml("input", {type: "button", class: "btn", value: "{#CANCEL}", onclick: function() { modalClose(); }}, null))
+                        ])
+                    ])
+                    modal("{#UPDATE_MODAL}", html)
+                } else if (bin !== env) {
                     var html = ml("div", {class: "row"}, [
                         ml("div", {class: "row my-3"}, "{#WARN_DIFF_ENV}"),
                         ml("div", {class: "row"}, [
@@ -63,25 +74,47 @@
                     ])
                     modal("{#UPDATE_MODAL}", html)
                 } else {
-                    if(ver[1] != "9")
-                        start()
-                    else {
-                        var html = ml("div", {class: "row"}, [
-                            ml("div", {class: "row my-3"}, "{#ERROR_UPGRADE_NOT_POSSIBLE}"),
-                            ml("div", {class: "row"}, [
-                                ml("div", {class: "col-6"}, ml("input", {type: "button", class: "btn", value: "{#CANCEL}", onclick: function() { modalClose(); }}, null))
-                            ])
-                        ])
-                        modal("{#UPDATE_MODAL}", html)
-                    }
+                    start()
                 }
-
             }
 
+            // upload via XHR so the form stays in the DOM during the transfer
+            // (replacing it mid-submit aborts the upload), show progress and surface errors
             function start() {
-                document.getElementById("form").submit()
-                var e = document.getElementById("content")
-                e.replaceChildren(span("{#UPDATE_STARTED}"))
+                let fileInput = document.getElementsByName("update")[0]
+                let content = document.getElementById("content")
+                if (!fileInput.files || !fileInput.files[0])
+                    return
+
+                let fd = new FormData()
+                fd.append("update", fileInput.files[0])
+
+                let label = span("{#UPDATE_STARTED}")
+                content.replaceChildren(label)
+
+                let xhr = new XMLHttpRequest()
+                let uploaded = false
+                xhr.open("POST", "/update")
+                xhr.upload.addEventListener("progress", function(e) {
+                    if (e.lengthComputable)
+                        label.textContent = "{#UPDATE_STARTED} (" + Math.round(e.loaded / e.total * 100) + "%)"
+                })
+                // fires once all bytes are sent; the device then reboots and drops the
+                // socket, so a following 'error' still means success
+                xhr.upload.addEventListener("load", function() { uploaded = true })
+
+                let finish = function(ok) {
+                    if (ok) {
+                        label.textContent = "{#UPDATE_STARTED}"
+                        setTimeout(function() { window.location.href = "/" }, 20000)
+                    } else
+                        content.replaceChildren(span("Update failed, please retry."))
+                }
+                xhr.addEventListener("load", function() { finish(true) })
+                xhr.addEventListener("error", function() { finish(uploaded) })
+                xhr.addEventListener("timeout", function() { finish(uploaded) })
+
+                xhr.send(fd)
             }
 
             getAjax("/api/generic", parseGeneric);
