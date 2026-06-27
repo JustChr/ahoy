@@ -1,3 +1,8 @@
+Changelog v0.8.158 (JustChr fork)
+
+* MQTT: auto-discover the DTU's own WiFi/system diagnostics in Home Assistant (uptime, RSSI, free heap, heap fragmentation, wifi_reconnects, wifi_disc_reason, IP, version) as a separate <name>_DTU device with entity_category diagnostic
+* docs/links: re-homed to JustChr/ahoy (web UI, README, manual); new manual/Updating.md and ROADMAP.md
+
 Changelog v0.8.157 (JustChr fork)
 
 * ESP8266 WiFi: self-heal from drops without the nightly reboot; cooperate with FRITZ! Mesh steering (no modem sleep, state-machine owns reconnects, link-loss + offline-reboot watchdogs, BSSID deprioritization)
