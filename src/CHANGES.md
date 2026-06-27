@@ -1,3 +1,8 @@
+Changelog v0.8.159 (JustChr fork)
+
+* WiFi: detect "associated but dead" mesh links (WiFi.status() stays connected but the mesh node's backhaul is gone) using MQTT as a liveness signal, and force a single rate-limited re-associate to re-home onto a live node (no reboot loop)
+* Diagnostics: persistent network counters in RTC memory that survive watchdog reboots (boot count, cumulative wifi reconnects, offline-reboot count, dead-link recoveries, last offline duration, last disconnect/reset reason); exposed via /api/system (net_diag) and MQTT (+ HA discovery: wifi_reconn_total, offline_reboots, last_offline_dur)
+
 Changelog v0.8.158 (JustChr fork)
 
 * MQTT: auto-discover the DTU's own WiFi/system diagnostics in Home Assistant (uptime, RSSI, free heap, heap fragmentation, wifi_reconnects, wifi_disc_reason, IP, version) as a separate <name>_DTU device with entity_category diagnostic

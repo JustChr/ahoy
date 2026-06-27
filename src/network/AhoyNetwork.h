@@ -10,6 +10,7 @@
 #include "../config/settings.h"
 #include "../utils/helper.h"
 #include "AhoyWifiAp.h"
+#include "NetDiag.h"
 #include "AsyncJson.h"
 #include <lwip/dns.h>
 
@@ -29,6 +30,12 @@ class AhoyNetwork {
 
             if('\0' == mConfig->sys.deviceName[0])
                 snprintf(mConfig->sys.deviceName, DEVNAME_LEN, "%s", DEF_DEVICE_NAME);
+
+            #if defined(ESP8266)
+            mDiag.begin((uint8_t)ESP.getResetInfoPtr()->reason);
+            #else
+            mDiag.begin(0);
+            #endif
 
             mAp.setup(&mConfig->sys);
 
@@ -50,6 +57,7 @@ class AhoyNetwork {
                 // keep the reason and which BSSID dropped us, so the reconnect logic can
                 // deprioritize a mesh node that just steered/deauthed us (FRITZ! Mesh)
                 mLastDisconnectReason = (uint8_t)event.reason;
+                mDiag.setDiscReason((uint8_t)event.reason);
                 memcpy(mBadBssid, event.bssid, 6);
                 mBadBssidValid = true;
                 OnEvent((WiFiEvent_t)SYSTEM_EVENT_STA_DISCONNECTED);
@@ -144,6 +152,21 @@ class AhoyNetwork {
 
         uint16_t getWifiReconnectCnt() const {
             return mWifiReconnects;
+        }
+
+        const netDiag_t& getDiag() const {
+            return mDiag.get();
+        }
+
+        // app-level liveness signal: lets the WiFi self-heal see through a
+        // "associated but dead" mesh link (WiFi.status() lies). Fed every second.
+        void setLink(bool mqttEnabled, bool mqttConnected) {
+            mMqttEnabled = mqttEnabled;
+            mMqttConnected = mqttConnected;
+            if(mqttConnected) {
+                mMqttWasConnected = true;
+                mLastMqttOkMs = millis();
+            }
         }
 
         virtual bool isWiredConnection() {
@@ -299,6 +322,12 @@ class AhoyNetwork {
         uint16_t mWifiReconnects = 0;       // number of reconnect cycles since boot
         uint8_t mBadBssid[6] = {0};         // BSSID that last dropped us (mesh node to avoid)
         bool mBadBssidValid = false;
+
+        NetDiag mDiag;                      // RTC-persistent diagnostics (survive reboots)
+        bool mMqttEnabled = false;          // app-fed liveness inputs (see setLink)
+        bool mMqttConnected = false;
+        bool mMqttWasConnected = false;     // MQTT worked at least once this session
+        uint32_t mLastMqttOkMs = 0;
 
         OnNetworkCB mOnNetworkCB;
         OnTimeCB mOnTimeCB;

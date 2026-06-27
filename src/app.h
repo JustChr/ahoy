@@ -191,6 +191,10 @@ class app : public IApp, public ah::Scheduler {
             return mNetwork->getWifiReconnectCnt();
         }
 
+        const netDiag_t& getNetDiag(void) const override {
+            return mNetwork->getDiag();
+        }
+
         String getIp(void) override {
             return mNetwork->getIp();
         }

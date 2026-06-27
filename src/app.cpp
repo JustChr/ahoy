@@ -181,7 +181,12 @@ void app::regularTickers(void) {
     DPRINTLN(DBG_DEBUG, F("regularTickers"));
     everySec([this]() { mWeb.tickSecond(); }, "webSc");
     everySec([this]() { mProtection->tickSecond(); }, "prot");
-    everySec([this]() { mNetwork->tickNetworkLoop(); }, "net");
+    everySec([this]() {
+        #if defined(ENABLE_MQTT)
+        mNetwork->setLink(mConfig->mqtt.broker[0] != '\0', getMqttIsConnected());
+        #endif
+        mNetwork->tickNetworkLoop();
+    }, "net");
 
     if(mConfig->inst.startWithoutTime)
         every([this]() { tickSend(); }, mConfig->inst.sendInterval, "tSend");

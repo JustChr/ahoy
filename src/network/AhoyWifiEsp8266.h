@@ -45,6 +45,7 @@ class AhoyWifi : public AhoyNetwork {
             if((millis() - mLastOnlineMs) >= OFFLINE_REBOOT_MS) {
                 if(WiFi.softAPgetStationNum() == 0) {
                     DBGPRINTLN(F("offline too long, rebooting"));
+                    mDiag.onOfflineReboot();
                     Serial.flush();
                     ESP.restart();
                 } else
@@ -58,6 +59,8 @@ class AhoyWifi : public AhoyNetwork {
                         mConnected = false;
                         mWifiConnecting = false;
                         mWifiReconnects++;
+                        mOfflineSinceMs = millis();
+                        mDiag.onReconnect();
                         mOnNetworkCB(false);
                         mAp.enable();
                         MDNS.end();
@@ -122,12 +125,33 @@ class AhoyWifi : public AhoyNetwork {
                             mStatus = NetworkState::DISCONNECTED;
                             break;
                         }
-                    } else
+                    } else {
                         mLastOnlineMs = millis();
+
+                        // "associated but dead": WiFi.status() still says connected but the
+                        // mesh node's backhaul is gone, so every status-based watchdog is blind.
+                        // Use MQTT as the liveness signal - but only if it worked at least once
+                        // this session, so a merely-down broker can't trigger us. Force ONE
+                        // re-associate (not a reboot), rate-limited, to re-home onto a live node.
+                        if(mConnected && mMqttEnabled && mMqttWasConnected && !mMqttConnected
+                            && ((millis() - mLastMqttOkMs) >= DEAD_LINK_TIMEOUT_MS)
+                            && ((millis() - mLastDeadLinkMs) >= DEAD_LINK_REASSOC_MIN_MS)) {
+                            DBGPRINTLN(F("link dead (assoc, no MQTT), forcing reconnect"));
+                            mLastDeadLinkMs = millis();
+                            mDiag.onDeadLink();
+                            WiFi.disconnect();
+                            mStatus = NetworkState::DISCONNECTED;
+                            break;
+                        }
+                    }
 
                     if(!mConnected) {
                         mAp.disable();
                         mConnected = true;
+                        if(0 != mOfflineSinceMs) {
+                            mDiag.setOfflineDuration((millis() - mOfflineSinceMs) / 1000);
+                            mOfflineSinceMs = 0;
+                        }
                         ah::welcome(WiFi.localIP().toString(), F("Station"));
                         MDNS.begin(mConfig->sys.deviceName);
                         MDNSResponder::hMDNSService hRes = MDNS.addService(NULL, "http", "tcp", 80);
@@ -209,9 +233,13 @@ class AhoyWifi : public AhoyNetwork {
         bool mWasInCh12to14 = false;
         uint32_t mConnectStartMs = 0;   // start of the current connect attempt
         uint32_t mLastOnlineMs = 0;     // last time we were confirmed online (WL_CONNECTED)
+        uint32_t mOfflineSinceMs = 0;   // when we last went offline (0 = online), for duration
+        uint32_t mLastDeadLinkMs = 0;   // last forced re-associate due to a dead link
         static constexpr uint32_t CONNECT_TIMEOUT_MS  = 20000;  // per connect attempt
         static constexpr uint32_t LINK_LOST_TIMEOUT_MS = 30000; // silent link loss before forced reconnect
         static constexpr uint32_t OFFLINE_REBOOT_MS   = 300000; // 5 min offline -> reboot
+        static constexpr uint32_t DEAD_LINK_TIMEOUT_MS = 240000;     // assoc but no MQTT this long -> dead
+        static constexpr uint32_t DEAD_LINK_REASSOC_MIN_MS = 360000; // min spacing between forced re-associates
 };
 
 #endif /*ESP8266*/

@@ -63,6 +63,9 @@ const diagInfo_t diagList[] = {
     {MQTT_HEAP_FRAG,        "Heap Fragmentation",     nullptr,           "measurement",      "%",     "mdi:memory",      true,  1},
     {MQTT_WIFI_RECONNECTS,  "WiFi Reconnects",        nullptr,           "total_increasing", nullptr, "mdi:wifi-sync",   false, 0},
     {MQTT_WIFI_DISC_REASON, "WiFi Disconnect Reason", nullptr,           nullptr,            nullptr, "mdi:wifi-alert",  false, 1},
+    {MQTT_WIFI_RECONN_TOTAL,"WiFi Reconnects (total)",nullptr,           "total_increasing", nullptr, "mdi:wifi-sync",   true,  0},
+    {MQTT_OFFLINE_REBOOTS,  "Offline Reboots",        nullptr,           "total_increasing", nullptr, "mdi:restart-alert", true, 0},
+    {MQTT_LAST_OFFLINE_DUR, "Last Offline Duration",  "duration",        nullptr,            "s",     "mdi:wifi-off",    true,  0},
     {MQTT_IP_ADDR,          "IP Address",             nullptr,           nullptr,            nullptr, "mdi:ip-network",  false, 0},
     {MQTT_VERSION,          "Version",                nullptr,           nullptr,            nullptr, "mdi:numeric",     false, 0},
 };
@@ -197,6 +200,11 @@ class PubMqtt {
             publish(subtopics[MQTT_WIFI_DISC_REASON], String(mApp->getWifiDisconnectReason()).c_str());
             #endif
             publish(subtopics[MQTT_WIFI_RECONNECTS], String(mApp->getWifiReconnectCnt()).c_str());
+
+            const netDiag_t &nd = mApp->getNetDiag();
+            publish(subtopics[MQTT_WIFI_RECONN_TOTAL], String(nd.reconnTotal).c_str());
+            publish(subtopics[MQTT_OFFLINE_REBOOTS], String(nd.offlineReboots).c_str());
+            publish(subtopics[MQTT_LAST_OFFLINE_DUR], String(nd.lastOfflineDur).c_str());
         }
 
         bool tickerSun(uint32_t sunrise, uint32_t sunset, int16_t offsM, int16_t offsE, bool isSunrise = false) {

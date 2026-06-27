@@ -421,6 +421,7 @@ class RestApi {
             getMqttInfo(obj.createNestedObject(F("mqtt")));
             getNetworkInfo(obj.createNestedObject(F("network")));
             getMemoryInfo(obj.createNestedObject(F("memory")));
+            getNetDiagInfo(obj.createNestedObject(F("net_diag")));
             #if defined(ESP32)
             getRadioCmtInfo(obj.createNestedObject(F("radioCmt")));
             #endif
@@ -893,6 +894,18 @@ class RestApi {
                 obj[F("par_size_spiffs")] = info.totalBytes;
                 obj[F("heap_total")] = 24*1014; // FIXME: don't know correct value
             #endif
+        }
+
+        void getNetDiagInfo(JsonObject obj) {
+            const netDiag_t &nd = mApp->getNetDiag();
+            obj[F("boot_cnt")]          = nd.bootCnt;
+            obj[F("wifi_reconn_total")] = nd.reconnTotal;
+            obj[F("wifi_reconn_boot")]  = mApp->getWifiReconnectCnt();
+            obj[F("offline_reboots")]   = nd.offlineReboots;
+            obj[F("dead_link_cnt")]     = nd.deadLinkCnt;
+            obj[F("last_offline_dur")]  = nd.lastOfflineDur;
+            obj[F("last_disc_reason")]  = nd.lastDiscReason;
+            obj[F("last_reset_reason")] = nd.lastResetReason;
         }
 
         void getRadioNrf(JsonObject obj) {

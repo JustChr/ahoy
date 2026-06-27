@@ -9,6 +9,7 @@
 #include "defines.h"
 #include "ESPAsyncWebServer.h"
 #include "utils/scheduler.h"
+#include "network/NetDiag.h"
 
 // abstract interface to App. Make members of App accessible from child class
 // like web or API without forward declaration
@@ -33,6 +34,7 @@ class IApp {
         virtual bool getWasInCh12to14(void) const = 0;
         virtual uint8_t getWifiDisconnectReason(void) const = 0;
         virtual uint16_t getWifiReconnectCnt(void) const = 0;
+        virtual const netDiag_t& getNetDiag(void) const = 0;
         virtual String getIp(void) = 0;
         virtual String getMac(void) = 0;
         virtual bool isApActive(void) = 0;
