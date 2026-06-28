@@ -159,14 +159,24 @@ class AhoyNetwork {
         }
 
         // app-level liveness signal: lets the WiFi self-heal see through a
-        // "associated but dead" mesh link (WiFi.status() lies). Fed every second.
-        void setLink(bool mqttEnabled, bool mqttConnected) {
+        // "associated but dead" mesh link. Fed every second. Neither WiFi.status()
+        // nor mqtt.connected() can be trusted here - both stay "up" on a half-open
+        // socket. The only proof data actually leaves the device is a broker
+        // round-trip, so liveness ticks ONLY when the QoS1 heartbeat's PUBACK count
+        // advances (mqttAckCnt). A rising edge on connect gives a grace window.
+        void setLink(bool mqttEnabled, bool mqttConnected, uint32_t mqttAckCnt) {
             mMqttEnabled = mqttEnabled;
-            mMqttConnected = mqttConnected;
             if(mqttConnected) {
+                if(!mMqttConnected) {                   // just (re)connected: grace before we judge the link
+                    mLastMqttOkMs = millis();
+                    mMqttAckCnt = mqttAckCnt;
+                } else if(mqttAckCnt != mMqttAckCnt) {  // a PUBACK arrived => data really reached the broker
+                    mMqttAckCnt = mqttAckCnt;
+                    mLastMqttOkMs = millis();
+                }
                 mMqttWasConnected = true;
-                mLastMqttOkMs = millis();
             }
+            mMqttConnected = mqttConnected;
         }
 
         virtual bool isWiredConnection() {
@@ -327,7 +337,8 @@ class AhoyNetwork {
         bool mMqttEnabled = false;          // app-fed liveness inputs (see setLink)
         bool mMqttConnected = false;
         bool mMqttWasConnected = false;     // MQTT worked at least once this session
-        uint32_t mLastMqttOkMs = 0;
+        uint32_t mLastMqttOkMs = 0;         // last confirmed broker round-trip (QoS1 PUBACK)
+        uint32_t mMqttAckCnt = 0;           // last seen PUBACK count, to detect new round-trips
 
         OnNetworkCB mOnNetworkCB;
         OnTimeCB mOnTimeCB;

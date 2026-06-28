@@ -128,17 +128,30 @@ class AhoyWifi : public AhoyNetwork {
                     } else {
                         mLastOnlineMs = millis();
 
-                        // "associated but dead": WiFi.status() still says connected but the
-                        // mesh node's backhaul is gone, so every status-based watchdog is blind.
-                        // Use MQTT as the liveness signal - but only if it worked at least once
-                        // this session, so a merely-down broker can't trigger us. Force ONE
-                        // re-associate (not a reboot), rate-limited, to re-home onto a live node.
-                        if(mConnected && mMqttEnabled && mMqttWasConnected && !mMqttConnected
+                        // "associated but dead": WiFi.status() still says connected and even
+                        // mqtt.connected() can stay true on a half-open socket, so every
+                        // status-based watchdog is blind. The only trustworthy signal is a
+                        // broker round-trip (QoS1 PUBACK) feeding mLastMqttOkMs - gated on
+                        // mMqttWasConnected so a merely-down broker can't trigger us. If that
+                        // stalls while we're associated, re-home onto a live node (rate-limited);
+                        // a real PUBACK afterwards clears the strike. If a re-associate does NOT
+                        // revive the round-trip, escalate to a reboot as last resort.
+                        if(mDeadLinkStrikes && (mMqttAckCnt != mDeadLinkAckMark))
+                            mDeadLinkStrikes = 0; // a PUBACK got through => link genuinely healed
+
+                        if(mConnected && mMqttEnabled && mMqttWasConnected
                             && ((millis() - mLastMqttOkMs) >= DEAD_LINK_TIMEOUT_MS)
                             && ((millis() - mLastDeadLinkMs) >= DEAD_LINK_REASSOC_MIN_MS)) {
-                            DBGPRINTLN(F("link dead (assoc, no MQTT), forcing reconnect"));
                             mLastDeadLinkMs = millis();
+                            mDeadLinkAckMark = mMqttAckCnt;
                             mDiag.onDeadLink();
+                            if(++mDeadLinkStrikes >= 2) {
+                                DBGPRINTLN(F("link still dead after re-assoc, rebooting"));
+                                mDiag.onOfflineReboot();
+                                Serial.flush();
+                                ESP.restart();
+                            }
+                            DBGPRINTLN(F("link dead (no MQTT round-trip), forcing reconnect"));
                             WiFi.disconnect();
                             mStatus = NetworkState::DISCONNECTED;
                             break;
@@ -235,6 +248,8 @@ class AhoyWifi : public AhoyNetwork {
         uint32_t mLastOnlineMs = 0;     // last time we were confirmed online (WL_CONNECTED)
         uint32_t mOfflineSinceMs = 0;   // when we last went offline (0 = online), for duration
         uint32_t mLastDeadLinkMs = 0;   // last forced re-associate due to a dead link
+        uint32_t mDeadLinkAckMark = 0;  // PUBACK count at the last dead-link strike
+        uint8_t mDeadLinkStrikes = 0;   // consecutive dead-link strikes (re-assoc -> reboot at 2)
         static constexpr uint32_t CONNECT_TIMEOUT_MS  = 20000;  // per connect attempt
         static constexpr uint32_t LINK_LOST_TIMEOUT_MS = 30000; // silent link loss before forced reconnect
         static constexpr uint32_t OFFLINE_REBOOT_MS   = 300000; // 5 min offline -> reboot

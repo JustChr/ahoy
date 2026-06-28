@@ -140,6 +140,9 @@ class PubMqtt {
             mClient.onConnect(std::bind(&PubMqtt::onConnect, this, std::placeholders::_1));
             mClient.onDisconnect(std::bind(&PubMqtt::onDisconnect, this, std::placeholders::_1));
             mClient.onMessage(std::bind(&PubMqtt::onMessage, this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
+            // fires only on a broker PUBACK/PUBCOMP (QoS>=1) - i.e. proof a publish
+            // actually reached the broker. Feeds the WiFi dead-link liveness signal.
+            mClient.onPublish([this](uint16_t) { mAckCnt++; });
         }
 
         void loop() {
@@ -189,7 +192,9 @@ class PubMqtt {
 
         void tickerMinute() {
             snprintf(mVal.data(), mVal.size(), "%u", (*mUptime));
-            publish(subtopics[MQTT_UPTIME], mVal.data());
+            // QoS1 so its PUBACK is our end-to-end liveness heartbeat (see setLink /
+            // the WiFi dead-link watchdog). One in-flight msg/min; no new topic.
+            publish(subtopics[MQTT_UPTIME], mVal.data(), false, true, QOS_1);
             publish(subtopics[MQTT_RSSI], String(WiFi.RSSI()).c_str());
             publish(subtopics[MQTT_FREE_HEAP], String(ESP.getFreeHeap()).c_str());
             #if defined(ESP32)
@@ -301,6 +306,10 @@ class PubMqtt {
 
         inline uint32_t getRxCnt(void) {
             return mRxCnt;
+        }
+
+        inline uint32_t getAckCnt(void) {
+            return mAckCnt;
         }
 
         void sendDiscoveryConfig(void) {
@@ -857,7 +866,7 @@ class PubMqtt {
         PubMqttIvData<HMSYSTEM> SendIvData;
 
         uint32_t *mUtcTimestamp = nullptr, *mUptime = nullptr;
-        uint32_t mRxCnt = 0, mTxCnt = 0;
+        uint32_t mRxCnt = 0, mTxCnt = 0, mAckCnt = 0;
         std::queue<sendListCmdIv> mSendList;
         std::array<bool, MAX_NUM_INVERTERS> mSendAlarm;
         subscriptionCb mSubscriptionCb = nullptr;

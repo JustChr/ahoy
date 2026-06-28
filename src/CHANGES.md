@@ -1,3 +1,7 @@
+Changelog v0.8.160 (JustChr fork)
+
+* WiFi: fix the "associated but dead" self-heal that stayed blind during a real 209-min outage. The 0.8.159 detector gated on mqtt.connected(), but on a half-open socket (mesh node associated, backhaul gone) the async MQTT client reports connected the whole time, so it never fired (dead_link_cnt stayed 0). Liveness is now a true broker round-trip: the per-minute uptime publish is sent at QoS1 and only its PUBACK refreshes the watchdog. No round-trip for ~4 min while associated -> forced re-associate; if that doesn't restore the round-trip, escalate to a reboot. Worst-case recovery ~209 min -> ~4-10 min. (no new MQTT topic; negligible RAM/flash)
+
 Changelog v0.8.159 (JustChr fork)
 
 * WiFi: detect "associated but dead" mesh links (WiFi.status() stays connected but the mesh node's backhaul is gone) using MQTT as a liveness signal, and force a single rate-limited re-associate to re-home onto a live node (no reboot loop)

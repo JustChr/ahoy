@@ -273,6 +273,14 @@ class app : public IApp, public ah::Scheduler {
             #endif
         }
 
+        uint32_t getMqttAckCnt() override {
+            #if defined(ENABLE_MQTT)
+                return mMqtt.getAckCnt();
+            #else
+                return 0;
+            #endif
+        }
+
         #if defined(ETHERNET)
         bool isWiredConnection() override {
             return mNetwork->isWiredConnection();

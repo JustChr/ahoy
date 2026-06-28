@@ -64,6 +64,7 @@ class IApp {
 
         virtual uint32_t getMqttRxCnt() = 0;
         virtual uint32_t getMqttTxCnt() = 0;
+        virtual uint32_t getMqttAckCnt() = 0;
 
         #if defined(ETHERNET)
         virtual bool isWiredConnection() = 0;

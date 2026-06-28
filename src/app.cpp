@@ -183,7 +183,7 @@ void app::regularTickers(void) {
     everySec([this]() { mProtection->tickSecond(); }, "prot");
     everySec([this]() {
         #if defined(ENABLE_MQTT)
-        mNetwork->setLink(mConfig->mqtt.broker[0] != '\0', getMqttIsConnected());
+        mNetwork->setLink(mConfig->mqtt.broker[0] != '\0', getMqttIsConnected(), getMqttAckCnt());
         #endif
         mNetwork->tickNetworkLoop();
     }, "net");
