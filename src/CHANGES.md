@@ -1,3 +1,9 @@
+Changelog v0.8.170 (JustChr fork)
+
+* OTA: fix ESP8266 OTA that silently reverted to the old firmware ("OTA success" but no upgrade) since 0.8.159. Root cause: the bootloader's `eboot_command` (which tells eboot to apply the staged image) lives at the very start of RTC user memory, and the 0.8.159 network diagnostics wrote to `rtcUserMemoryWrite(0, ...)` - the same bytes - clobbering the command's magic/CRC during the post-OTA reboot window, so eboot found no valid command and booted the running image. NetDiag now uses RTC offset 32, clear of the 32-dword command. This is the actual fix for the OTA failures the 0.8.161-163 hardening was chasing.
+* OTA: fix a hard crash mid-upload on ESP8266 (`Panic __yield`, core_esp8266_main.cpp:191). The 0.8.163 watchdog-feed called `yield()` from the AsyncTCP upload callback, which runs in the SDK (SYS) context where yield()/delay() are forbidden and panic. Replaced with `ESP.wdtFeed()`, which services the watchdog without the illegal context switch.
+* OTA: stage the new image using its actual size instead of the whole free sketch space, so the staged copy lands clear of the running (~600 KB) sketch with margin instead of one sector above it.
+
 Changelog v0.8.163 (JustChr fork)
 
 * OTA: turn the update into a true global quiesce so the flash has the ~13 KB heap to itself. While an update is in flight the firmware now stands down every other heap/CPU co-tenant: RF inverter polling pauses, the MQTT pump pauses, the web data API (/api/*) answers a tiny static 503 instead of allocating a multi-KB JSON doc in a TCP callback (the old collision that could grab heap out from under the flash), and the web-serial buffer is dropped. All gated on the existing OTA-active flag, which already self-expires after 5 min so nothing can get stuck paused.

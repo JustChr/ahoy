@@ -27,6 +27,14 @@ struct netDiag_t {
 
 #define NETDIAG_MAGIC 0xA40D1A60
 
+// RTC user-memory offset (in 4-byte blocks). MUST stay clear of the ESP8266 OTA eboot_command,
+// which the Updater writes as 32 dwords at the very start of RTC user memory (RTC_MEM
+// 0x60001200). Writing at offset 0 (the old behaviour, 0.8.159) clobbered the eboot_command's
+// magic/CRC during the post-OTA reboot window, so the bootloader rejected the staged image and
+// silently reverted to the running firmware ("OTA success" but no upgrade). Offset 32 sits past
+// the 32-dword command in either RTC base mapping. This broke OTA on ESP8266 from 0.8.159 on.
+#define NETDIAG_RTC_OFFSET 32
+
 class NetDiag {
     public:
         void begin(uint8_t resetReason) {
@@ -66,7 +74,7 @@ class NetDiag {
 
         bool load() {
             #if defined(ESP8266)
-            if(!ESP.rtcUserMemoryRead(0, (uint32_t*)&mData, sizeof(mData)))
+            if(!ESP.rtcUserMemoryRead(NETDIAG_RTC_OFFSET, (uint32_t*)&mData, sizeof(mData)))
                 return false;
             return (mData.magic == NETDIAG_MAGIC) && (mData.crc == calcCrc());
             #else
@@ -77,7 +85,7 @@ class NetDiag {
         void save() {
             mData.crc = calcCrc();
             #if defined(ESP8266)
-            ESP.rtcUserMemoryWrite(0, (uint32_t*)&mData, sizeof(mData));
+            ESP.rtcUserMemoryWrite(NETDIAG_RTC_OFFSET, (uint32_t*)&mData, sizeof(mData));
             #endif
         }
 

@@ -163,8 +163,17 @@ class Web {
 
                 #ifndef ESP32
                 Update.runAsync(true);
+                // stage using the ACTUAL image size, not the whole free sketch space. The
+                // ESP8266 Updater places the staged image at (FS_start - declaredSize): declaring
+                // the full free space pins staging to one sector above the (now ~609 KB) running
+                // sketch - the same cramped address every OTA. Using the real size relocates
+                // staging high under the filesystem, clear of that repeatedly-rewritten region,
+                // so eboot can apply it. Fall back to free space if no Content-Length was sent.
+                uint32_t beginSize = (imgSize > 0) ? imgSize : ((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000);
+                #else
+                uint32_t beginSize = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
                 #endif
-                if (!mOtaDenied && !Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
+                if (!mOtaDenied && !Update.begin(beginSize)) {
                     Update.printError(Serial);
                     DPRINTLN(DBG_INFO, F("OTA: begin failed (no space)"));
                     mOtaDenied = true;
@@ -180,10 +189,13 @@ class Web {
                     Update.printError(Serial);
                     DPRINTLN(DBG_INFO, F("OTA: write short (flash slow / low heap)"));
                 }
-                // the upload runs in a TCP callback, outside loop()'s watchdog reset; a slow
-                // flash sector write can starve the WDT. yield() services the soft WDT and the
-                // network stack between chunks so a slow flash can't trip a reset mid-image.
-                yield();
+                // the upload runs in the AsyncTCP callback, which on ESP8266 executes in the SYS
+                // context where yield()/delay() are forbidden and panic ("__yield" at
+                // core_esp8266_main.cpp:191). Feed the soft WDT directly instead so a slow flash
+                // sector write can't trip a reset mid-image, without the illegal context switch.
+                #ifndef ESP32
+                ESP.wdtFeed();
+                #endif
             }
             if (final) {
                 if (mOtaDenied) {
