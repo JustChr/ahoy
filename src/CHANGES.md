@@ -1,3 +1,7 @@
+Changelog v0.8.161 (JustChr fork)
+
+* OTA: harden the web update so it can't silently "succeed" then roll back. The old handler sized the update to free flash and called Update.end(true) (commit even if incomplete), reporting success from !hasError() - so a truncated/corrupt upload was committed and then rejected by the bootloader at boot, with no visible error. Now: (1) if the client sends an X-MD5 header the image is verified end-to-end and a mismatch fails the update before commit; (2) "success" and the reboot are gated on Update.end() actually finalizing a whole image - a failed OTA stays on the current firmware instead of bouncing; (3) all OTA status (start / success+bytes / failure reason) goes through the debug log so it shows on the web /serial console. Flash with curl ... -H "X-MD5: <md5>" to use the integrity check.
+
 Changelog v0.8.160 (JustChr fork)
 
 * WiFi: fix the "associated but dead" self-heal that stayed blind during a real 209-min outage. The 0.8.159 detector gated on mqtt.connected(), but on a half-open socket (mesh node associated, backhaul gone) the async MQTT client reports connected the whole time, so it never fired (dead_link_cnt stayed 0). Liveness is now a true broker round-trip: the per-minute uptime publish is sent at QoS1 and only its PUBACK refreshes the watchdog. No round-trip for ~4 min while associated -> forced re-associate; if that doesn't restore the round-trip, escalate to a reboot. Worst-case recovery ~209 min -> ~4-10 min. (no new MQTT topic; negligible RAM/flash)

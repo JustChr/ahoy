@@ -125,23 +125,35 @@ class Web {
 
         void showUpdate2(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             if (!index) {
-                Serial.printf("Update Start: %s\n", filename.c_str());
+                mUpdateOk = false;
+                DPRINTLN(DBG_INFO, "OTA start: " + filename);
                 #ifndef ESP32
                 Update.runAsync(true);
                 #endif
                 if (!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
                     Update.printError(Serial);
+                    DPRINTLN(DBG_INFO, F("OTA: begin failed (no space)"));
                 }
+                // end-to-end integrity: if the client sent the firmware MD5, verify it here so a
+                // truncated/corrupt upload is rejected with a clear "failed" instead of being
+                // committed and then silently rolled back by the bootloader at the next boot.
+                if (request->hasHeader(F("X-MD5")))
+                    Update.setMD5(request->getHeader(F("X-MD5"))->value().c_str());
             }
             if (!Update.hasError()) {
-                if (Update.write(data, len) != len)
+                if (Update.write(data, len) != len) {
                     Update.printError(Serial);
+                    DPRINTLN(DBG_INFO, F("OTA: write short (flash slow / low heap)"));
+                }
             }
             if (final) {
-                if (Update.end(true))
-                    Serial.printf("Update Success: %uB\n", index + len);
-                else
+                mUpdateOk = Update.end(true);  // checks size/MD5 - only true if the image is whole
+                if (mUpdateOk)
+                    DPRINTLN(DBG_INFO, "OTA success: " + String(index + len) + " B");
+                else {
                     Update.printError(Serial);
+                    DPRINTLN(DBG_INFO, F("OTA FAILED (size/MD5/flash) - not rebooting"));
+                }
             }
         }
 
@@ -267,7 +279,9 @@ class Web {
                 onUpdate(request);
             #endif
 
-            bool reboot = (!Update.hasError());
+            // only claim success (and only reboot) if Update.end() actually finalized a whole,
+            // integrity-checked image - hasError() alone can be false on a committed-but-corrupt OTA
+            bool reboot = mUpdateOk;
 
             String html = F("<!doctype html><html><head><title>Update</title><meta http-equiv=\"refresh\" content=\"");
             #if defined(ETHERNET)
@@ -285,7 +299,8 @@ class Web {
             AsyncWebServerResponse *response = request->beginResponse(200, F("text/html; charset=UTF-8"), html);
             response->addHeader("Connection", "close");
             request->send(response);
-            mApp->setRebootFlag();
+            if (reboot)  // a failed/corrupt OTA stays on the current firmware; don't bounce for nothing
+                mApp->setRebootFlag();
         }
 
         void onUpload(AsyncWebServerRequest *request) {
@@ -978,6 +993,7 @@ class Web {
 
         File mUploadFp;
         bool mUploadFail = false;
+        bool mUpdateOk = false;     // set true only when an OTA image fully finalized (size/MD5 OK)
 };
 
 #endif /*__WEB_H__*/
