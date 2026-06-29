@@ -121,6 +121,10 @@ class app : public IApp, public ah::Scheduler {
             return Scheduler::mTimestamp;
         }
 
+        uint16_t getRfInterval() override {  // effective RF poll interval Te [s] (§12)
+            return mRfTe;
+        }
+
         uint64_t getTimestampMs() override {
             return ((uint64_t)Scheduler::mTimestamp * 1000) + ((uint64_t)millis() - (uint64_t)Scheduler::mTsMillis) % 1000;
         }
@@ -474,6 +478,7 @@ class app : public IApp, public ah::Scheduler {
         void tickSunrise(void);
         void tickComm(void);
         void tickSend(void);
+        bool rfCadenceCtrl(uint8_t fill, uint8_t maxFill);  // adaptive cadence (§12); true => skip enqueue
         bool sendIv(Inverter<> *iv);
         void tickMinute(void);
         void tickZeroValues(void);
@@ -509,6 +514,11 @@ class app : public IApp, public ah::Scheduler {
 
         uint8_t mSendLastIvId = 0;
         bool mAllIvNotAvail = false;
+
+        // adaptive RF cadence controller state (§12)
+        uint16_t mRfTe = SEND_INTERVAL;        // current effective poll interval [s]
+        uint8_t  mRfHealthyStreak = 0;         // consecutive healthy ticks (hysteresis)
+        uint32_t mRfPrevTx = 0, mRfPrevLoss = 0; // radio-stat deltas baseline
 
         bool mNetworkConnected = false;
 

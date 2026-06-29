@@ -1103,17 +1103,18 @@ class RestApi {
             root[F("v")] = WEB_FRAME_SCHEMA;
 
             // g[] = [rssi, heap_free, uptime, Te, flags] — only what changes / is worth watching
-            // live. Te (effective RF interval) is the configured sendInterval until the Phase 2
-            // adaptive controller lands; flags bit1=mqtt connected, bit2=OTA (bit0 night /
-            // bit3 adaptive reserved for Phase 2).
+            // live. Te = effective RF interval from the §12 adaptive controller (= sendInterval
+            // when adaptive is off); flags bit1=mqtt connected, bit2=OTA, bit3=adaptive on
+            // (bit0 night reserved).
             uint8_t flags = 0;
             if(mApp->getMqttIsConnected()) flags |= 0x02;
             if(mApp->isOtaActive())        flags |= 0x04;
+            if(mConfig->inst.rfAdaptive)   flags |= 0x08;
             JsonArray g = root.createNestedArray(F("g"));
             g.add((WiFi.status() != WL_CONNECTED) ? 0 : WiFi.RSSI());
             g.add(freeHeap);
             g.add(mApp->getUptime());
-            g.add(mConfig->inst.sendInterval);
+            g.add(mApp->getRfInterval());
             g.add(flags);
 
             uint32_t now = mApp->getTimestamp();

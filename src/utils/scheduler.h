@@ -101,6 +101,21 @@ namespace ah {
                 return false;
             }
 
+            // Retune a running ticker's interval in place (adaptive RF cadence, §12).
+            // Clamps the pending timeout down to the new reload so a speed-up takes
+            // effect on the next fire rather than after the old (longer) interval.
+            bool setReloadByName(const char* name, uint32_t reload) {
+                for (uint8_t id = 0; id < MAX_NUM_TICKER; id++) {
+                    if (mTickerInUse[id] && (strncmp(name, mTicker[id].name, strlen(name)) == 0)) {
+                        mTicker[id].reload = reload;
+                        if (mTicker[id].timeout > reload)
+                            mTicker[id].timeout = reload;
+                        return true;
+                    }
+                }
+                return false;
+            }
+
             uint32_t getUptime(void) {
                 return mUptime;
             }

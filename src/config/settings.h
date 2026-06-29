@@ -184,7 +184,9 @@ typedef struct {
 //    bool enabled;
     cfgIv_t iv[MAX_NUM_INVERTERS];
 
-    uint16_t sendInterval;
+    uint16_t sendInterval;   // adaptive controller ceiling T_max (plan §12)
+    bool rfAdaptive;         // adaptive RF cadence on/off (off = fixed sendInterval, today's behaviour)
+    uint16_t rfTmin;         // optional T_min override [s]; 0 = auto = max(floor, ceil(N_iv*0.7))
     bool rstValsAtMidNight;
     bool rstValsNotAvail;
     bool rstValsCommStop;
@@ -475,6 +477,8 @@ class settings {
             mCfg.mqtt.enableRetain = true;
 
             mCfg.inst.sendInterval       = SEND_INTERVAL;
+            mCfg.inst.rfAdaptive         = RF_ADAPTIVE_DEFAULT;
+            mCfg.inst.rfTmin             = 0; // 0 = auto
             mCfg.inst.rstValsAtMidNight   = false;
             mCfg.inst.rstValsNotAvail    = false;
             mCfg.inst.rstValsCommStop    = false;
@@ -805,6 +809,8 @@ class settings {
         void jsonInst(JsonObject obj, bool set = false) {
             if(set) {
                 obj[F("intvl")]          = mCfg.inst.sendInterval;
+                obj[F("rfAdpt")]         = (bool)mCfg.inst.rfAdaptive;
+                obj[F("rfTmin")]         = mCfg.inst.rfTmin;
 //                obj[F("en")] = (bool)mCfg.inst.enabled;
                 obj[F("rstMidNight")]    = (bool)mCfg.inst.rstValsAtMidNight;
                 obj[F("rstNotAvail")]    = (bool)mCfg.inst.rstValsNotAvail;
@@ -816,6 +822,8 @@ class settings {
             }
             else {
                 getVal<uint16_t>(obj, F("intvl"), &mCfg.inst.sendInterval);
+                getVal<bool>(obj, F("rfAdpt"), &mCfg.inst.rfAdaptive);
+                getVal<uint16_t>(obj, F("rfTmin"), &mCfg.inst.rfTmin);
 //                getVal<bool>(obj, F("en"), &mCfg.inst.enabled);
                 getVal<bool>(obj, F("rstMidNight"), &mCfg.inst.rstValsAtMidNight);
                 getVal<bool>(obj, F("rstNotAvail"), &mCfg.inst.rstValsNotAvail);

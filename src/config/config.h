@@ -203,8 +203,21 @@
     #define MAX_NUM_INVERTERS   4
 #endif
 
-// default send interval
+// default send interval (= adaptive controller ceiling T_max, plan §12)
 #define SEND_INTERVAL           15
+
+// adaptive RF cadence controller (plan §12). Te (effective poll interval) is
+// nudged within [T_min, T_max=sendInterval] from live link health: gentle
+// additive speed-up when healthy, fast multiplicative back-off under stress.
+#define RF_ADAPTIVE_DEFAULT     true   // closed loop on by default; off = fixed sendInterval (today)
+#define RF_TMIN_FLOOR           3      // hard lower bound for Te [s] - never faster than this
+#define RF_TMIN_PER_IV_DS       7      // per-inverter drain budget in tenths of a s => ceil(N*0.7s)
+#define RF_STEP_S               2      // additive speed-up step [s] (gentle)
+#define RF_N_HEALTHY            2      // consecutive healthy ticks before each speed-up (hysteresis)
+#define RF_FILL_HI_PCT          80     // queue fill % above which we back off + skip enqueue (backpressure)
+#define RF_LOSS_HI_PCT          25     // loss/retransmit % above which we back off
+#define RF_LOSS_LO_PCT          5      // loss % below which the link counts as healthy
+#define RF_HEAP_FLOOR           6000   // never speed up while free heap < this [B]
 
 // maximum human readable inverter name length
 #define MAX_NAME_LENGTH         16

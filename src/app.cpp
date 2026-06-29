@@ -168,6 +168,7 @@ void app::onNetwork(bool connected) {
         mNetwork->updateNtpTime();
 
         resetTickerByName("tSend");
+        mRfTe = mConfig->inst.sendInterval;  // start at the ceiling; controller adapts from here
         every([this]() { tickSend(); }, mConfig->inst.sendInterval, "tSend");
 
         #if defined(ENABLE_MQTT)
@@ -191,8 +192,10 @@ void app::regularTickers(void) {
         mNetwork->tickNetworkLoop();
     }, "net");
 
-    if(mConfig->inst.startWithoutTime)
+    if(mConfig->inst.startWithoutTime) {
+        mRfTe = mConfig->inst.sendInterval;  // start at the ceiling; controller adapts from here
         every([this]() { tickSend(); }, mConfig->inst.sendInterval, "tSend");
+    }
 
 
     every([this]() { mNetwork->updateNtpTime(); }, mConfig->ntp.interval * 60, "ntp");
@@ -370,6 +373,78 @@ void app::tickMidnight(void) {
 }
 
 //-----------------------------------------------------------------------------
+// Adaptive RF cadence controller (plan §12). Runs once per poll cycle: derives the
+// effective interval Te in [T_min, T_max=sendInterval] from live link health and
+// re-arms the "tSend" ticker. Stability-first AIMD: gentle additive speed-up only
+// after RF_N_HEALTHY consecutive healthy ticks (hysteresis); fast multiplicative
+// back-off the instant the queue fills, loss spikes, or heap nears the floor.
+// Returns true when the queue is hot => caller skips enqueue this round.
+bool app::rfCadenceCtrl(uint8_t fill, uint8_t maxFill) {
+    uint16_t tMax = mConfig->inst.sendInterval;
+
+    if(!mConfig->inst.rfAdaptive) {           // adaptive off => exactly today's fixed cadence
+        if(mRfTe != tMax) {
+            mRfTe = tMax;
+            setReloadByName("tSend", mRfTe);
+        }
+        return false;
+    }
+
+    // T_min: user override, else max(floor, ceil(N_enabled * 0.7s))
+    uint8_t nIv = 0;
+    for(uint8_t i = 0; i < MAX_NUM_INVERTERS; i++) {
+        Inverter<> *iv = mSys.getInverterByPos(i);
+        if((NULL != iv) && iv->config->enabled)
+            nIv++;
+    }
+    uint16_t tMin = mConfig->inst.rfTmin;
+    if(0 == tMin)
+        tMin = (nIv * RF_TMIN_PER_IV_DS + 9) / 10;   // ceil(N * 0.7)
+    if(tMin < RF_TMIN_FLOOR) tMin = RF_TMIN_FLOOR;
+    if(tMin > tMax)          tMin = tMax;             // never invert the bounds
+
+    // queue fill ratio [%]
+    uint8_t fillPct = (maxFill > 0) ? (uint8_t)((uint16_t)fill * 100 / maxFill) : 0;
+
+    // loss/retransmit rate [%] from radio-stat deltas summed across inverters
+    uint32_t tx = 0, loss = 0;
+    for(uint8_t i = 0; i < MAX_NUM_INVERTERS; i++) {
+        Inverter<> *iv = mSys.getInverterByPos(i);
+        if(NULL == iv) continue;
+        tx   += iv->radioStatistics.txCnt;
+        loss += iv->radioStatistics.retransmits + iv->radioStatistics.rxFail;
+    }
+    uint32_t dTx   = (tx   >= mRfPrevTx)   ? (tx   - mRfPrevTx)   : 0;
+    uint32_t dLoss = (loss >= mRfPrevLoss) ? (loss - mRfPrevLoss) : 0;
+    mRfPrevTx = tx; mRfPrevLoss = loss;
+    uint8_t lossPct = 0;
+    if(dTx > 0) {
+        uint32_t p = dLoss * 100 / dTx;
+        lossPct = (p > 100) ? 100 : (uint8_t)p;
+    }
+
+    uint32_t heap = ESP.getFreeHeap();
+    bool overload = (heap < RF_HEAP_FLOOR) || (fillPct > RF_FILL_HI_PCT) || (lossPct > RF_LOSS_HI_PCT);
+
+    if(overload) {                                    // fast multiplicative back-off
+        uint32_t next = (uint32_t)mRfTe * 2;
+        mRfTe = (next > tMax) ? tMax : (uint16_t)next;
+        mRfHealthyStreak = 0;
+    } else if((fillPct < RF_FILL_HI_PCT) && (lossPct < RF_LOSS_LO_PCT) && (heap >= RF_HEAP_FLOOR)) {
+        if(++mRfHealthyStreak >= RF_N_HEALTHY) {      // gentle additive speed-up (hysteresis)
+            mRfTe = (mRfTe > tMin + RF_STEP_S) ? (mRfTe - RF_STEP_S) : tMin;
+            mRfHealthyStreak = 0;
+        }
+    } // else: hold
+
+    if(mRfTe < tMin) mRfTe = tMin;
+    if(mRfTe > tMax) mRfTe = tMax;
+    setReloadByName("tSend", mRfTe);
+
+    return (fillPct > RF_FILL_HI_PCT);                // hard backpressure: skip enqueue when hot
+}
+
+//-----------------------------------------------------------------------------
 void app::tickSend(void) {
     // OTA quiesce: stand down RF polling while a flash is in flight. Enqueuing inverter
     // requests would keep the CommQueue + radio allocating on the ~13 KB heap and run long
@@ -381,6 +456,15 @@ void app::tickSend(void) {
     bool notAvail = true;
     uint8_t fill = mCommunication.getFillState();
     uint8_t max = mCommunication.getMaxFill();
+
+    // Adaptive cadence + hard backpressure (§12): recompute Te from link health and
+    // re-arm "tSend". When the queue is hot it returns true => skip enqueue this round
+    // so we never pile onto a full CommQueue (today the code below only warns).
+    if(rfCadenceCtrl(fill, max)) {
+        DPRINTLN(DBG_WARN, F("RF queue hot, skipping enqueue this round (backpressure)"));
+        return;
+    }
+
     if((max-MAX_NUM_INVERTERS) <= fill) {
         DPRINT(DBG_WARN, F("send queue almost full, consider to increase interval, "));
         DBGPRINT(String(fill));

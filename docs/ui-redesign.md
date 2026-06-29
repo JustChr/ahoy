@@ -185,7 +185,7 @@ Addresses active OTA instability; **independent of the redesign** (no SPA, no ne
 - [x] **A. OTA = global quiesce.** Extend `setOtaActive`: during OTA, data endpoints `503`; RF polling + MQTT publishing stand down; serial buffer dropped. (Also lays the `heavy-op token` groundwork reused in Phase 1.) — *`isOtaActive()` exposed via IApp; `tickSend` + `mMqtt.loop()` gated in `app.cpp`; `/api/*` returns static `503 {"e":"ota"}` in `RestApi::onApi`; web-serial buffer dropped in `web.h::tickSecond`.*
 - [x] **B. Pre-flight checks** before `Update.begin` — refuse cleanly if `free heap < OTA_HEAP_FLOOR` or `Content-Length > free sketch space`. — *`showUpdate2`: `OTA_HEAP_FLOOR=8192`, `contentLength()` vs `getFreeSketchSpace()`; `mOtaDenied` flag skips all writes and stays on current fw.*
 - [x] **C. Browser-side integrity** — compute firmware MD5 in `update.html`, send `X-MD5` (matches the `curl` path). — *embedded compact blueimp MD5 over raw file bytes; `X-MD5` header set on the XHR; falls back to size-only if hashing fails.*
-- [x] **D. Watchdog during slow writes** — verify/feed WDT in the write path (runs outside `loop()`). — *`yield()` after each `Update.write` chunk to service the soft WDT + network stack.*
+- [x] **D. Watchdog during slow writes** — verify/feed WDT in the write path (runs outside `loop()`). — *⚠️ CORRECTED: an early build used `yield()` per chunk — **illegal in the AsyncTCP/SYS callback context, panics `__yield`** and crashed every OTA (0.8.163–165). Fixed 0.8.167: use `#ifndef ESP32 ESP.wdtFeed()`, **never** `yield()`/`delay()` here.*
 - [x] **E. Honest-failure UX** — update view surfaces "failed, still on old firmware". — *`showUpdate` returns HTTP 500 on failure; `update.html` XHR `load` checks `xhr.status` instead of always claiming success.*
 - *Verify per §19.3. Exit criteria: OTA completes with a web client polling + MQTT publishing + serial connected; corrupt/oversized images rejected cleanly.*
 
@@ -202,10 +202,10 @@ The biggest stability win, measurable against the §1 baseline.
 
 ### Phase 2 — Adaptive RF cadence (firmware; the "fast + stable" core)
 
-- [ ] Closed-loop controller (§12) replacing fixed `sendInterval`; `adaptive` toggle (default on), `T_min`/`T_max` bounds.
-- [ ] Hard backpressure (skip enqueue on full queue); per-inverter slow-probe for offline units.
-- [ ] Expose `Te` + health in `/api/frame` `g[]` and `net_diag`.
-- *Exit criteria: §10.4 — cadence shortens when healthy, backs off under induced loss, no queue overflow; MQTT freshness improves per §12.5 without destabilising.*
+- [x] Closed-loop controller (§12) replacing fixed `sendInterval`; `adaptive` toggle (default on), `T_min`/`T_max` bounds. — *`app::rfCadenceCtrl(fill,maxFill)` runs once per poll inside `tickSend`, recomputes `mRfTe ∈ [T_min, T_max=sendInterval]` and re-arms "tSend" via new `Scheduler::setReloadByName()` (clamps pending timeout down so speed-ups apply next fire). AIMD: `Te*2` back-off on overload, `Te-RF_STEP_S` speed-up after `RF_N_HEALTHY` healthy ticks. Inputs: queue fill %, loss% from `radioStatistics.{retransmits,rxFail}/txCnt` deltas, `ESP.getFreeHeap()` vs `RF_HEAP_FLOOR`. Tunables in `config.h`. Settings: `inst.rfAdaptive`(default on)+`inst.rfTmin`(0=auto) — additive JSON keys `rfAdpt`/`rfTmin`, no `CONFIG_VERSION` bump, downgrade-safe (§13.4).*
+- [x] Hard backpressure (skip enqueue on full queue). — *`rfCadenceCtrl` returns true when `fill% > RF_FILL_HI_PCT` → `tickSend` skips the enqueue loop this round (was warn-only).* **[~] per-inverter slow-probe for offline units deferred** — global cadence already adapts; `sendIv` skips disabled/night inverters. Per-iv probe scheduling is a refinement, not load-bearing for the core controller.
+- [x] Expose `Te` + adaptive flag in `/api/frame` `g[]`. — *`g[3]=getRfInterval()` (live Te), `g[4]` flags bit3=adaptive on. `net_diag` exposure deferred (frame `g[]` already makes the controller observable for §10.4 verification).*
+- *Exit criteria: §10.4 — cadence shortens when healthy, backs off under induced loss, no queue overflow; MQTT freshness improves per §12.5 without destabilising.* **Builds clean (esp8266, RAM 62.8 %, Flash 58.7 %); not yet flashed/verified on device — compile-only so far.**
 
 ### Phase 3 — SPA shell + delta rendering (UI foundation)
 
@@ -554,6 +554,8 @@ Preferred: **direct flat writer to a chunked/`AsyncResponseStream`** using a sma
 
 ## 19. OTA hardening
 
+> **⚠️ Root-cause update (post-0.8.170).** The original hypothesis below — that OTA failures were *heap contention during the flash* — was **wrong as the primary cause**. Serial capture proved two unrelated bugs (§19.4): an illegal `yield()` in the write handler (panic) and an RTC offset-0 collision that clobbered the eboot apply command (silent revert). The heap-quiesce work (A) is still valid hardening, but it did **not** fix the failures. Keep the §19.4 findings authoritative over the heap framing here.
+
 Recent OTA instability traces to **heap contention during the flash**. Today `setOtaActive(true)` (`web.h:132`) only suspends the **WiFi self-heal** (`AhoyNetwork.h:184`, with `OTA_MAX_MS` failsafe auto-expire). It does **not** pause the other heavy heap consumers, which keep running mid-flash on the ~13 KB heap:
 
 - **RF polling** — `tickSend` keeps enqueuing; CommQueue + radio keep allocating.
@@ -568,12 +570,25 @@ Plus: **browser uploads skip integrity** — `update.html` never sends `X-MD5`, 
 - **A. OTA = true global quiesce** (biggest win). Extend `setOtaActive`: while OTA is active, data endpoints return `503`, RF polling + MQTT publishing stand down, serial buffer dropped. Frees max heap for `Update.write`, removes the collision window. This *is* the §10.3 quiesce + heavy-op token made real.
 - **B. Pre-flight checks before `Update.begin`** — refuse cleanly (stay on current fw) if `free heap < OTA_HEAP_FLOOR` or `Content-Length > free sketch space`. Honest early "no" beats a half-written flash.
 - **C. Browser-side integrity** — compute firmware MD5 client-side in the update view and send `X-MD5`, matching the `curl` path. (Flash is not the constraint.)
-- **D. Watchdog during slow writes** — writes run *outside* `loop()`'s `esp_task_wdt_reset()`; confirm `runAsync(true)` yields enough, else feed the WDT in the write path so slow flash can't trip the hardware WDT.
+- **D. Watchdog during slow writes** — writes run *outside* `loop()`'s `esp_task_wdt_reset()`; feed the WDT in the write path with **`ESP.wdtFeed()`** so slow flash can't trip the hardware WDT. ⚠️ **Never `yield()`/`delay()` in this handler** — it runs in AsyncTCP/SYS context and panics (`__yield`). See §19.4.
 - **E. Honest-failure UX** — firmware already does not reboot on a corrupt image (`mUpdateOk`/`Update.end(true)`); the update view must surface "failed, still on old firmware", never a fake success + hung reload.
 
 ### 19.2 Out of scope (flagged tradeoff)
 
 - **F. Two-slot / rollback OTA** for power-loss safety: possible on 4 MB ESP8266 but changes the partition table → **wipes LittleFS/settings (§13)** and halves app space. Not recommended unless a one-time settings reset is accepted. Default: no.
+
+### 19.4 Post-mortem — actual root cause (0.8.165→170)
+
+The "OTA succeeds (HTTP 200, MD5 ok, `end(true)`) but reboots back to the old firmware" failures were **not** heap, size, partition, or offsets. Two distinct bugs, both found only via a 115200 serial capture of the post-OTA boot:
+
+1. **Illegal `yield()` in the upload handler.** The Phase-0 item-D `yield()` per `Update.write` chunk runs in the **AsyncTCP/SYS context** and panics (`__yield`, `core_esp8266_main.cpp:191`) → OTA crashed mid-upload (HTTP 000 ~9.4 s). **Fix (0.8.167):** `#ifndef ESP32 ESP.wdtFeed()`. **Rule: never `yield()`/`delay()` in an AsyncTCP callback.**
+2. **RTC offset-0 collision (the silent revert).** ESP8266's eboot apply command (`eboot_command`) lives at the **start of RTC user memory** (32 dwords @ `0x60001200`). `Update.end()` writes it there to tell the bootloader to apply the staged image. ahoy's **NetDiag (added 0.8.159 — exactly when OTA broke)** wrote diagnostics via `ESP.rtcUserMemoryWrite(0,…)` = offset 0, clobbering the command during the 3 s post-OTA reboot window. eboot then read no valid command (`~`) and booted the **old** image. **Fix (0.8.169):** `NETDIAG_RTC_OFFSET = 32`. Confirmed: OTA 169→170 applied cleanly over WiFi after 5+ deterministic reverts.
+
+**Standing rules for any future RTC/OTA change (enforce):**
+- Never `ESP.rtcUserMemoryWrite/Read` at offset < 32 — keep all app RTC data past the 32-dword eboot_command.
+- Never `yield()`/`delay()` in the OTA write handler / any AsyncTCP callback — use `ESP.wdtFeed()`.
+- When OTA "succeeds but reverts," capture serial @115200 on the post-OTA boot: `@`/`cp:` = applying, `~` = no valid command (clobbered) → distinguishes apply-failure from a bad image.
+- Serial gotcha: this CH340 board has inverted DTR — hand-rolled pyserial `dtr=False` forces UART download mode (`boot mode:(1,6)`, looks dead). Use `pio device monitor`/esptool; recover with a power cycle.
 
 ### 19.3 Verification
 

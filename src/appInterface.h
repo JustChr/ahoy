@@ -53,6 +53,7 @@ class IApp {
         virtual void getSchedulerNames() = 0;
 
         virtual void triggerTickSend(uint8_t id) = 0;
+        virtual uint16_t getRfInterval() = 0;   // current effective RF poll interval Te [s] (§12)
 
         virtual bool getRebootRequestState() = 0;
         virtual bool getSettingsValid() = 0;
