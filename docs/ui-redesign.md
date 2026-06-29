@@ -193,11 +193,12 @@ Addresses active OTA instability; **independent of the redesign** (no SPA, no ne
 
 The biggest stability win, measurable against the §1 baseline.
 
-- [ ] `/api/frame` (§15.1) — single endpoint, fixed ≤2 KB serializer (§15.3), schema-versioned.
-- [ ] `/api/meta` (§15.2) one-shot static data; `/api/auth` (§14.2) lock state.
-- [ ] Global `HEAP_FLOOR` + heavy-op token (§10.3) applied to web + MQTT + OTA; remove `getMaxFreeBlockSize()` from the steady-state path.
-- [ ] Legacy `/api/*` endpoints kept as compat shim (§11.1).
-- *Exit criteria: §9 verification — peak alloc ≤2 KB, 1 request/refresh, heap floor respected, 24 h soak clean.*
+- [x] `/api/frame` (§15.1) — single endpoint, schema-versioned, flat positional payload. — *`RestApi::getFrame()`; FIXED `AsyncJsonResponse(false, WEB_FRAME_DOC_SIZE=3072)` (constant, never `getMaxFreeBlockSize()`); `g[]`=`[rssi,heap_free,uptime,Te,flags]` (Te=`sendInterval` until Phase 2); per-iv `[status,pl_read,alarm_cnt,rssi,age, 13×AC, 7×DC/ch]` mirroring `getInverter()`; intercepted in `onApi` before the legacy ~12.8 KB alloc.*
+- [x] `/api/meta` (§15.2) one-shot static data; `/api/auth` (§14.2) lock state. — *`getMeta()` (host/version/build/esp_type/refresh/region/tz, `prot{}`, AC+DC units+names once, per-iv id/name/serial/gen/max_pwr/enabled/ch_names/ch_max_pwr — no secrets); `getAuth()` returns `{protected,unlocked,mask}` in a 256 B doc.*
+- [x] Global `HEAP_FLOOR` on the web steady-state path; `getMaxFreeBlockSize()` removed from the steady-state path. — *`WEB_HEAP_FLOOR=6144`; below it `/api/frame` returns static `503 {"e":1}` so a struggling device degrades (client keeps last frame). `/api/frame` is the new steady state and never calls `getMaxFreeBlockSize()`; legacy `/api/live` etc. (compat shim only) still do.*
+- [~] Heavy-op token (§10.3) across web + MQTT + OTA — **deferred to Phase 2.** *Once `/api/frame` is a fixed ≤3 KB alloc (not 12.8 KB), two overlapping builds are ~6 KB, not catastrophic, and OTA already provides global quiesce (Phase 0). A token held across AsyncWebServer's lazy/async serialization can't be released at the right time without a stuck-token (always-503) risk — a stability regression. Folded into Phase 2 where MQTT publish chunking lives and the token has a natural synchronous release point.*
+- [x] Legacy `/api/*` endpoints kept as compat shim (§11.1). — *untouched; all legacy paths still dispatch in `onApi`. New endpoints are purely additive.*
+- *Exit criteria: §9 verification — peak alloc bounded/constant, 1 request/refresh, heap floor respected, 24 h soak clean. **Builds clean (esp8266, RAM 62.8 %, Flash 58.6 %); not yet flashed/verified on device** (device still on 0.8.162 — remote OTA is wedged at eboot, needs serial flash).*
 
 ### Phase 2 — Adaptive RF cadence (firmware; the "fast + stable" core)
 

@@ -83,6 +83,16 @@ class RestApi {
                 return;
             }
 
+            String path = request->url().substring(5);
+
+            // Phase 1 bounded data path (§2, §15): /api/frame and /api/auth use a FIXED, small
+            // JsonDocument plus a heap-floor guard — never the getMaxFreeBlockSize()-sized doc
+            // built below. Handle them here, before that ~12.8 KB allocation, so the steady-state
+            // frame can never grab the largest free block. The legacy /api/* endpoints below stay
+            // untouched as a compatibility shim (§11.1).
+            if(path == F("frame")) { getFrame(request); return; }
+            if(path == F("auth"))  { getAuth(request);  return; }
+
             mHeapFree = ESP.getFreeHeap();
             #ifndef ESP32
             mHeapFreeBlk = ESP.getMaxFreeBlockSize();
@@ -102,7 +112,6 @@ class RestApi {
             #endif
             JsonObject root = response->getRoot();
 
-            String path = request->url().substring(5);
             if(path == "html/system")         getHtmlSystem(request, root);
             else if(path == "html/logout")    getHtmlLogout(request, root);
             else if(path == "html/reboot")    getHtmlReboot(request, root);
@@ -120,6 +129,7 @@ class RestApi {
             else if(path == "setup/networks") getNetworks(root);
             else if(path == "setup/getip")    getIp(root);
             else if(path == "live")           getLive(request,root);
+            else if(path == "meta")           getMeta(request, root);
             #if defined(ENABLE_HISTORY)
             else if (path == "powerHistory")  getPowerHistory(request, root, HistoryStorageType::POWER);
             else if (path == "powerHistoryDay")  getPowerHistory(request, root, HistoryStorageType::POWER_DAY);
@@ -311,6 +321,9 @@ class RestApi {
             ep[F("setup/getip")]      = url + F("setup/getip");
             ep[F("system")]           = url + F("system");
             ep[F("live")]             = url + F("live");
+            ep[F("frame")]            = url + F("frame");
+            ep[F("meta")]             = url + F("meta");
+            ep[F("auth")]             = url + F("auth");
             #if defined(ENABLE_HISTORY)
             ep[F("powerHistory")]     = url + F("powerHistory");
             ep[F("powerHistoryDay")]  = url + F("powerHistoryDay");
@@ -1065,6 +1078,162 @@ class RestApi {
             }
         }
 
+        // -------- Phase 1: bounded data path (§2, §15) --------
+
+        // /api/frame — the steady-state endpoint. ONE request replaces the legacy 3-request
+        // cascade. Flat positional payload (field meanings live in the browser index map, not as
+        // repeated JSON keys). Allocates a FIXED WEB_FRAME_DOC_SIZE doc regardless of heap state
+        // (never getMaxFreeBlockSize()) and bows out with a tiny static 503 below WEB_HEAP_FLOOR
+        // so a struggling device degrades instead of crashing; the client keeps its last frame.
+        void getFrame(AsyncWebServerRequest *request) {
+            mApp->resetLockTimeout();
+
+            uint32_t freeHeap = ESP.getFreeHeap();
+            if(freeHeap < WEB_HEAP_FLOOR) {
+                AsyncWebServerResponse *r = request->beginResponse(503, F("application/json"), F("{\"e\":1}"));
+                r->addHeader(F("Retry-After"), F("2"));
+                request->send(r);
+                return;
+            }
+
+            AsyncJsonResponse* response = new AsyncJsonResponse(false, WEB_FRAME_DOC_SIZE);
+            JsonObject root = response->getRoot();
+
+            root[F("t")] = mApp->getTimestamp();
+            root[F("v")] = WEB_FRAME_SCHEMA;
+
+            // g[] = [rssi, heap_free, uptime, Te, flags] — only what changes / is worth watching
+            // live. Te (effective RF interval) is the configured sendInterval until the Phase 2
+            // adaptive controller lands; flags bit1=mqtt connected, bit2=OTA (bit0 night /
+            // bit3 adaptive reserved for Phase 2).
+            uint8_t flags = 0;
+            if(mApp->getMqttIsConnected()) flags |= 0x02;
+            if(mApp->isOtaActive())        flags |= 0x04;
+            JsonArray g = root.createNestedArray(F("g"));
+            g.add((WiFi.status() != WL_CONNECTED) ? 0 : WiFi.RSSI());
+            g.add(freeHeap);
+            g.add(mApp->getUptime());
+            g.add(mConfig->inst.sendInterval);
+            g.add(flags);
+
+            uint32_t now = mApp->getTimestamp();
+            JsonArray ivArr = root.createNestedArray(F("iv"));
+            Inverter<> *iv;
+            uint8_t cnt = 0;
+            // iterate by position so frame iv[k] maps 1:1 to /api/meta iv[k] (same order, all
+            // present inverters incl. disabled — the browser hides disabled via meta.enabled).
+            for(uint8_t i = 0; (i < MAX_NUM_INVERTERS) && (cnt < WEB_FRAME_MAX_IV); i++) {
+                iv = mSys->getInverterByPos(i);
+                if(NULL == iv)
+                    continue;
+                cnt++;
+
+                record_t<> *rec = iv->getRecordStruct(RealTimeRunData_Debug);
+                JsonArray a = ivArr.createNestedArray();
+
+                // 5 scalars: status, power-limit read, alarm count, rssi, age (s since last frame)
+                a.add((uint8_t)iv->getStatus());
+                a.add(ah::round1(iv->getChannelFieldValue(CH0, FLD_ACT_ACTIVE_PWR_LIMIT, iv->getRecordStruct(SystemConfigPara))));
+                a.add(iv->alarmCnt);
+                a.add(iv->rssi);
+                a.add((now > rec->ts) ? (now - rec->ts) : 0);
+
+                // ch0 = AC (13 fields), order = acList / acListHmt (mirrors getInverter())
+                uint8_t pos;
+                if(IV_HMT == iv->ivGen) {
+                    for(uint8_t fld = 0; fld < sizeof(acListHmt); fld++) {
+                        pos = iv->getPosByChFld(CH0, acListHmt[fld], rec);
+                        a.add((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0);
+                    }
+                } else {
+                    for(uint8_t fld = 0; fld < sizeof(acList); fld++) {
+                        pos = iv->getPosByChFld(CH0, acList[fld], rec);
+                        a.add((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0);
+                    }
+                }
+
+                // DC channels (7 fields each, order = dcList), capped at WEB_FRAME_MAX_CH
+                for(uint8_t ch = 0; (ch < iv->channels) && (ch < WEB_FRAME_MAX_CH); ch++) {
+                    for(uint8_t fld = 0; fld < sizeof(dcList); fld++) {
+                        pos = iv->getPosByChFld((ch + 1), dcList[fld], rec);
+                        a.add((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0);
+                    }
+                }
+            }
+
+            response->addHeader("Access-Control-Allow-Origin", "*");
+            response->setLength();
+            request->send(response);
+        }
+
+        // /api/meta — per-session static data, fetched once and cached by the browser: never in
+        // the steady-state loop. Larger but user-initiated. Goes through the normal (bounded)
+        // response path. No secrets are emitted here (§14.2.3).
+        void getMeta(AsyncWebServerRequest *request, JsonObject obj) {
+            obj[F("host")]     = mConfig->sys.deviceName;
+            obj[F("version")]  = String(mApp->getVersion());
+            obj[F("build")]    = String(AUTO_GIT_HASH);
+            #if defined(ESP32)
+            obj[F("esp_type")] = F("ESP32");
+            #else
+            obj[F("esp_type")] = F("ESP8266");
+            #endif
+            obj[F("refresh")]  = mConfig->inst.sendInterval;
+            obj[F("region")]   = mConfig->sys.region;
+            obj[F("timezone")] = mConfig->sys.timezone;
+
+            JsonObject prot = obj.createNestedObject(F("prot"));
+            prot[F("protected")] = (bool)(mConfig->sys.adminPwd[0] != '\0');
+            prot[F("unlocked")]  = !mApp->isProtected(request->client()->remoteIP().toString().c_str(), "", true);
+            prot[F("mask")]      = (uint16_t)mConfig->sys.protectionMask;
+
+            // AC + DC field units + names, once (the browser labels the flat frame arrays).
+            for(uint8_t fld = 0; fld < sizeof(acList); fld++) {
+                obj[F("u_ac")][fld] = String(units[fieldUnits[acList[fld]]]);
+                obj[F("f_ac")][fld] = String(fields[acList[fld]]);
+            }
+            for(uint8_t fld = 0; fld < sizeof(dcList); fld++) {
+                obj[F("u_dc")][fld] = String(units[fieldUnits[dcList[fld]]]);
+                obj[F("f_dc")][fld] = String(fields[dcList[fld]]);
+            }
+
+            JsonArray ivArr = obj.createNestedArray(F("iv"));
+            Inverter<> *iv;
+            for(uint8_t i = 0; i < MAX_NUM_INVERTERS; i++) {
+                iv = mSys->getInverterByPos(i);
+                if(NULL == iv)
+                    continue;
+                JsonObject o = ivArr.createNestedObject();
+                o[F("id")]      = i;
+                o[F("name")]    = String(iv->config->name);
+                o[F("serial")]  = String(iv->config->serial.u64, HEX);
+                o[F("gen")]     = iv->ivGen;
+                o[F("max_pwr")] = iv->getMaxPower();
+                o[F("enabled")] = (bool)iv->config->enabled;
+                JsonArray cn = o.createNestedArray(F("ch_names"));
+                JsonArray cm = o.createNestedArray(F("ch_max_pwr"));
+                cn.add("AC");         // ch0
+                cm.add(0);
+                for(uint8_t j = 0; j < iv->channels; j++) {
+                    cn.add(iv->config->chName[j]);
+                    cm.add(iv->config->chMaxPwr[j]);
+                }
+            }
+        }
+
+        // /api/auth — tiny global lock state for the SPA login flow (§14.2). Single optional
+        // password, IP-based session; UI hiding is cosmetic, server stays the source of truth.
+        void getAuth(AsyncWebServerRequest *request) {
+            AsyncJsonResponse* response = new AsyncJsonResponse(false, 256);
+            JsonObject root = response->getRoot();
+            root[F("protected")] = (bool)(mConfig->sys.adminPwd[0] != '\0');
+            root[F("unlocked")]  = !mApp->isProtected(request->client()->remoteIP().toString().c_str(), "", true);
+            root[F("mask")]      = (uint16_t)mConfig->sys.protectionMask;
+            response->addHeader("Access-Control-Allow-Origin", "*");
+            response->setLength();
+            request->send(response);
+        }
+
         #if defined(ENABLE_HISTORY)
         void getPowerHistory(AsyncWebServerRequest *request, JsonObject obj, HistoryStorageType type) {
             getGeneric(request, obj.createNestedObject(F("generic")));
@@ -1264,6 +1433,16 @@ class RestApi {
         constexpr static uint8_t acListHmt[] = {FLD_UAC_1N, FLD_IAC_1, FLD_PAC, FLD_F, FLD_PF, FLD_T,
             FLD_YT, FLD_YD, FLD_PDC, FLD_EFF, FLD_Q, FLD_MP, FLD_MT};
         constexpr static uint8_t dcList[] = {FLD_UDC, FLD_IDC, FLD_PDC, FLD_YD, FLD_YT, FLD_IRR, FLD_MP};
+
+        // Phase 1 (/api/frame) — fixed, bounded steady-state frame; never sized to free heap.
+        static constexpr uint16_t WEB_FRAME_SCHEMA   = 1;     // frame schema version (§15.1)
+        static constexpr uint8_t  WEB_FRAME_MAX_IV   = 4;     // inverter cap (budget basis)
+        static constexpr uint8_t  WEB_FRAME_MAX_CH   = 6;     // DC-channel cap per inverter
+        // worst case 4 iv × (5 scalars + 13 AC + 6×7 DC) ≈ 312 float slots ≈ 2.1 KB of ArduinoJson
+        // slots on ESP8266 (8 B/slot) + array headers → a 3 KB FIXED doc with margin. ~23 % of the
+        // ~13 KB largest free block, vs ~96 % for the legacy getMaxFreeBlockSize()-sized doc.
+        static constexpr uint16_t WEB_FRAME_DOC_SIZE = 3072;
+        static constexpr uint32_t WEB_HEAP_FLOOR     = 6144;  // below this, /api/frame bows out (§3.2)
 
     private:
         IApp *mApp = nullptr;
