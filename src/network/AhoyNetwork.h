@@ -187,6 +187,14 @@ class AhoyNetwork {
                 mOtaActiveSinceMs = millis();
         }
 
+        // true while an OTA upload is in flight. Used to globally quiesce the other heap/CPU
+        // co-tenants (RF polling, MQTT publish, web data endpoints, web-serial) so the flash
+        // has the heap to itself. Self-clears via the OTA_MAX_MS failsafe in the network loop,
+        // so a dropped upload can never wedge the device in a quiesced state.
+        bool isOtaActive(void) const {
+            return mOtaActive;
+        }
+
         virtual bool isWiredConnection() {
             return false;
         }

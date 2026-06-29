@@ -1,3 +1,11 @@
+Changelog v0.8.163 (JustChr fork)
+
+* OTA: turn the update into a true global quiesce so the flash has the ~13 KB heap to itself. While an update is in flight the firmware now stands down every other heap/CPU co-tenant: RF inverter polling pauses, the MQTT pump pauses, the web data API (/api/*) answers a tiny static 503 instead of allocating a multi-KB JSON doc in a TCP callback (the old collision that could grab heap out from under the flash), and the web-serial buffer is dropped. All gated on the existing OTA-active flag, which already self-expires after 5 min so nothing can get stuck paused.
+* OTA: pre-flight the image before touching the flash - refuse cleanly (and stay on the current firmware) if free heap is below a safe floor or the upload is larger than the free sketch space, instead of half-writing a sketch that bricks until a serial reflash.
+* OTA: the browser update page now computes the firmware MD5 client-side and sends it as X-MD5, so a corrupt/truncated browser upload is rejected end-to-end exactly like the curl path (previously only curl could send the hash). Falls back to the size check if hashing fails.
+* OTA: feed the watchdog during slow flash writes (the upload runs in a network callback, outside the main loop's watchdog reset) so a slow sector write can't trip a reset mid-image.
+* OTA: honest failure in the browser - the update page now reads the HTTP status and shows "failed - still running the previous firmware" on a real failure, instead of always claiming success and reloading. (negligible RAM/flash cost)
+
 Changelog v0.8.162 (JustChr fork)
 
 * OTA: pause the WiFi self-heal while an update is in flight. A slow upload starves the main loop and silences the MQTT heartbeat, which the 0.8.159/160 "associated but dead" watchdog mistook for a dead link - it would disconnect (159) or even reboot (160) the DTU mid-flash, truncating the image (the silent rollbacks 0.8.161 then surfaced as honest failures). The /update handler now flags an OTA active on the first chunk so neither the dead-link re-associate nor the offline-reboot can fire during the transfer; the flag clears on failure (success reboots anyway) and self-expires after 5 min as a failsafe against a dropped upload. (no measurable RAM/flash cost)

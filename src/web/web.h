@@ -108,6 +108,14 @@ class Web {
                 if(nullptr == mSerialBuf)
                     return;
 
+                // OTA quiesce: don't push the web-serial SSE buffer during a flash; just drop
+                // what's queued so it can't contend for heap with Update.write.
+                if (mApp->isOtaActive()) {
+                    memset(mSerialBuf, 0, WEB_SERIAL_BUF_SIZE);
+                    mSerialBufFill = 0;
+                    return;
+                }
+
                 if (mSerialBufFill > 0) {
                     mEvts.send(mSerialBuf, "serial", millis());
                     memset(mSerialBuf, 0, WEB_SERIAL_BUF_SIZE);
@@ -126,31 +134,66 @@ class Web {
         void showUpdate2(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             if (!index) {
                 mUpdateOk = false;
+                mOtaDenied = false;
                 // pause the WiFi self-heal: a slow upload starves the loop and silences MQTT,
                 // which the dead-link watchdog would otherwise mistake for a dead link and
-                // disconnect/reboot us mid-flash, truncating the image.
+                // disconnect/reboot us mid-flash, truncating the image. setOtaActive also
+                // quiesces RF polling / MQTT publish / web data endpoints / web-serial so the
+                // flash has the ~13 KB heap to itself.
                 mApp->setOtaActive(true);
                 DPRINTLN(DBG_INFO, "OTA start: " + filename);
+
+                // pre-flight: refuse cleanly (stay on current fw) before touching the flash if
+                // the device can't safely take the image. An honest early "no" beats a
+                // half-written sketch that bricks until a serial reflash.
+                uint32_t freeHeap = ESP.getFreeHeap();
+                #ifndef ESP32
+                uint32_t freeSketch = ESP.getFreeSketchSpace();
+                #else
+                uint32_t freeSketch = (ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000;
+                #endif
+                uint32_t imgSize = request->contentLength();
+                if (freeHeap < OTA_HEAP_FLOOR) {
+                    DPRINTLN(DBG_INFO, "OTA refused: heap " + String(freeHeap) + " B < floor " + String(OTA_HEAP_FLOOR) + " B");
+                    mOtaDenied = true;
+                } else if ((imgSize > 0) && (imgSize > freeSketch)) {
+                    DPRINTLN(DBG_INFO, "OTA refused: image " + String(imgSize) + " B > free sketch space " + String(freeSketch) + " B");
+                    mOtaDenied = true;
+                }
+
                 #ifndef ESP32
                 Update.runAsync(true);
                 #endif
-                if (!Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
+                if (!mOtaDenied && !Update.begin((ESP.getFreeSketchSpace() - 0x1000) & 0xFFFFF000)) {
                     Update.printError(Serial);
                     DPRINTLN(DBG_INFO, F("OTA: begin failed (no space)"));
+                    mOtaDenied = true;
                 }
                 // end-to-end integrity: if the client sent the firmware MD5, verify it here so a
                 // truncated/corrupt upload is rejected with a clear "failed" instead of being
                 // committed and then silently rolled back by the bootloader at the next boot.
-                if (request->hasHeader(F("X-MD5")))
+                if (!mOtaDenied && request->hasHeader(F("X-MD5")))
                     Update.setMD5(request->getHeader(F("X-MD5"))->value().c_str());
             }
-            if (!Update.hasError()) {
+            if (!mOtaDenied && !Update.hasError()) {
                 if (Update.write(data, len) != len) {
                     Update.printError(Serial);
                     DPRINTLN(DBG_INFO, F("OTA: write short (flash slow / low heap)"));
                 }
+                // the upload runs in a TCP callback, outside loop()'s watchdog reset; a slow
+                // flash sector write can starve the WDT. yield() services the soft WDT and the
+                // network stack between chunks so a slow flash can't trip a reset mid-image.
+                yield();
             }
             if (final) {
+                if (mOtaDenied) {
+                    // never began (or aborted pre-flight): stay on the current firmware and
+                    // resume the self-heal. showUpdate() reports "failed".
+                    DPRINTLN(DBG_INFO, F("OTA denied at pre-flight - staying on current firmware"));
+                    mUpdateOk = false;
+                    mApp->setOtaActive(false);
+                    return;
+                }
                 mUpdateOk = Update.end(true);  // checks size/MD5 - only true if the image is whole
                 if (mUpdateOk)
                     DPRINTLN(DBG_INFO, "OTA success: " + String(index + len) + " B");
@@ -299,12 +342,14 @@ class Web {
             #endif
             html += F("; URL=/\"></head><body>Update: ");
             if (reboot)
-                html += "success";
+                html += F("success<br/><br/>rebooting ...");
             else
-                html += "failed";
-            html += F("<br/><br/>rebooting ...</body></html>");
+                html += F("failed - still running the previous firmware");
+            html += F("</body></html>");
 
-            AsyncWebServerResponse *response = request->beginResponse(200, F("text/html; charset=UTF-8"), html);
+            // honest status code so the browser flow (update.html) can tell a real failure
+            // (stayed on the old firmware) from a success, instead of always showing "success".
+            AsyncWebServerResponse *response = request->beginResponse(reboot ? 200 : 500, F("text/html; charset=UTF-8"), html);
             response->addHeader("Connection", "close");
             request->send(response);
             if (reboot)  // a failed/corrupt OTA stays on the current firmware; don't bounce for nothing
@@ -1002,6 +1047,11 @@ class Web {
         File mUploadFp;
         bool mUploadFail = false;
         bool mUpdateOk = false;     // set true only when an OTA image fully finalized (size/MD5 OK)
+        bool mOtaDenied = false;    // pre-flight refused this image (low heap / too big): stay on current fw
+
+        // refuse an OTA cleanly if the device can't safely take it, rather than half-writing the
+        // flash. Keep margin for Update's sector buffer + the TCP/web stack still in the callback.
+        static constexpr uint32_t OTA_HEAP_FLOOR = 8192;
 };
 
 #endif /*__WEB_H__*/

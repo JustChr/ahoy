@@ -141,7 +141,10 @@ void app::loop(void) {
     mCommunication.loop();
 
     #if defined(ENABLE_MQTT)
-    if (mMqttEnabled && mNetworkConnected)
+    // OTA quiesce: don't pump MQTT (publishes + serialization) while a flash is in flight,
+    // so the upload has the heap to itself. The link goes quiet for the OTA duration and
+    // reconnects afterwards; the dead-link self-heal is already paused during OTA.
+    if (mMqttEnabled && mNetworkConnected && !mNetwork->isOtaActive())
         mMqtt.loop();
     #endif
 
@@ -368,6 +371,13 @@ void app::tickMidnight(void) {
 
 //-----------------------------------------------------------------------------
 void app::tickSend(void) {
+    // OTA quiesce: stand down RF polling while a flash is in flight. Enqueuing inverter
+    // requests would keep the CommQueue + radio allocating on the ~13 KB heap and run long
+    // RF callbacks the upload can't afford. Polling resumes once OTA clears (or the failsafe
+    // self-clears it). Inverter data just goes stale for the OTA duration.
+    if(mNetwork->isOtaActive())
+        return;
+
     bool notAvail = true;
     uint8_t fill = mCommunication.getFillState();
     uint8_t max = mCommunication.getMaxFill();

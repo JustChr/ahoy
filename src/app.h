@@ -221,6 +221,10 @@ class app : public IApp, public ah::Scheduler {
             mNetwork->setOtaActive(en);
         }
 
+        bool isOtaActive(void) override {
+            return mNetwork->isOtaActive();
+        }
+
         const char *getVersion() override {
             return mVersion;
         }

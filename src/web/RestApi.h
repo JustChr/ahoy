@@ -72,6 +72,17 @@ class RestApi {
         void onApi(AsyncWebServerRequest *request) {
             DPRINTLN(DBG_VERBOSE, String("onApi: ") + String((uint16_t)request->method())); // 1 == Get, 3 == POST
 
+            // OTA quiesce: while a flash is in flight, AsyncWebServer can fire this in a TCP
+            // callback and grab a multi-KB JSON doc out from under Update.write on the ~13 KB
+            // heap. Bow out with a tiny static 503 instead of allocating; the SPA/clients keep
+            // their last frame and retry. Costs nothing and removes the collision window.
+            if(mApp->isOtaActive()) {
+                AsyncWebServerResponse *response = request->beginResponse(503, F("application/json"), F("{\"e\":\"ota\"}"));
+                response->addHeader(F("Retry-After"), F("5"));
+                request->send(response);
+                return;
+            }
+
             mHeapFree = ESP.getFreeHeap();
             #ifndef ESP32
             mHeapFreeBlk = ESP.getMaxFreeBlockSize();
