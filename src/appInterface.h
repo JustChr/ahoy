@@ -24,6 +24,7 @@ class IApp {
         virtual bool getLastSaveSucceed() = 0;
         virtual bool getShouldReboot() = 0;
         virtual void setRebootFlag() = 0;
+        virtual void setOtaActive(bool en) = 0;
         virtual const char *getVersion() = 0;
         virtual const char *getVersionModules() = 0;
 

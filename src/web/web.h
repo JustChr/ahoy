@@ -126,6 +126,10 @@ class Web {
         void showUpdate2(AsyncWebServerRequest *request, String filename, size_t index, uint8_t *data, size_t len, bool final) {
             if (!index) {
                 mUpdateOk = false;
+                // pause the WiFi self-heal: a slow upload starves the loop and silences MQTT,
+                // which the dead-link watchdog would otherwise mistake for a dead link and
+                // disconnect/reboot us mid-flash, truncating the image.
+                mApp->setOtaActive(true);
                 DPRINTLN(DBG_INFO, "OTA start: " + filename);
                 #ifndef ESP32
                 Update.runAsync(true);
@@ -154,6 +158,10 @@ class Web {
                     Update.printError(Serial);
                     DPRINTLN(DBG_INFO, F("OTA FAILED (size/MD5/flash) - not rebooting"));
                 }
+                // on success we reboot into the new image; on failure resume the self-heal
+                // so the (unchanged) running firmware stays watched.
+                if (!mUpdateOk)
+                    mApp->setOtaActive(false);
             }
         }
 

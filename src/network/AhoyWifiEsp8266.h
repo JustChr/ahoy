@@ -39,10 +39,25 @@ class AhoyWifi : public AhoyNetwork {
 
             mCnt++;
 
+            // while an OTA upload is in flight the loop is starved and MQTT goes quiet; that is
+            // not a dead link. Hold the watchdog anchors current so neither the offline-reboot
+            // nor the dead-link re-associate can fire and kill the transfer's TCP socket mid-flash.
+            if(mOtaActive) {
+                // failsafe: a dropped upload may never reach the handler that clears the flag,
+                // so don't let it disable the self-heal forever.
+                if((millis() - mOtaActiveSinceMs) >= OTA_MAX_MS) {
+                    DBGPRINTLN(F("OTA flag stuck, resuming self-heal"));
+                    mOtaActive = false;
+                } else {
+                    mLastOnlineMs = millis();
+                    mLastMqttOkMs = millis();
+                }
+            }
+
             #if !defined(AP_ONLY)
             // last-resort recovery: if we cannot get back online for a long time, reboot.
             // skip while a client is using the soft-AP (e.g. someone is configuring the DTU).
-            if((millis() - mLastOnlineMs) >= OFFLINE_REBOOT_MS) {
+            if(!mOtaActive && (millis() - mLastOnlineMs) >= OFFLINE_REBOOT_MS) {
                 if(WiFi.softAPgetStationNum() == 0) {
                     DBGPRINTLN(F("offline too long, rebooting"));
                     mDiag.onOfflineReboot();
@@ -139,7 +154,7 @@ class AhoyWifi : public AhoyNetwork {
                         if(mDeadLinkStrikes && (mMqttAckCnt != mDeadLinkAckMark))
                             mDeadLinkStrikes = 0; // a PUBACK got through => link genuinely healed
 
-                        if(mConnected && mMqttEnabled && mMqttWasConnected
+                        if(mConnected && !mOtaActive && mMqttEnabled && mMqttWasConnected
                             && ((millis() - mLastMqttOkMs) >= DEAD_LINK_TIMEOUT_MS)
                             && ((millis() - mLastDeadLinkMs) >= DEAD_LINK_REASSOC_MIN_MS)) {
                             mLastDeadLinkMs = millis();

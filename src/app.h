@@ -215,6 +215,12 @@ class app : public IApp, public ah::Scheduler {
             once(std::bind(&app::tickReboot, this), 3, "rboot");
         }
 
+        // suspend the WiFi self-heal (dead-link re-associate / offline reboot) while an
+        // OTA upload is in flight, so a slow transfer can't get its TCP socket killed mid-flash
+        void setOtaActive(bool en) override {
+            mNetwork->setOtaActive(en);
+        }
+
         const char *getVersion() override {
             return mVersion;
         }

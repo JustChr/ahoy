@@ -179,6 +179,14 @@ class AhoyNetwork {
             mMqttConnected = mqttConnected;
         }
 
+        // an OTA upload is in flight: pause the self-heal so a slow transfer isn't
+        // disconnected/rebooted mid-flash (the watchdog can't tell OTA-busy from a dead link)
+        void setOtaActive(bool en) {
+            mOtaActive = en;
+            if(en)
+                mOtaActiveSinceMs = millis();
+        }
+
         virtual bool isWiredConnection() {
             return false;
         }
@@ -339,6 +347,9 @@ class AhoyNetwork {
         bool mMqttWasConnected = false;     // MQTT worked at least once this session
         uint32_t mLastMqttOkMs = 0;         // last confirmed broker round-trip (QoS1 PUBACK)
         uint32_t mMqttAckCnt = 0;           // last seen PUBACK count, to detect new round-trips
+        bool mOtaActive = false;            // OTA upload in flight -> self-heal suspended
+        uint32_t mOtaActiveSinceMs = 0;     // when OTA was flagged active (failsafe auto-expire)
+        static constexpr uint32_t OTA_MAX_MS = 300000; // a stuck OTA flag self-clears after 5 min
 
         OnNetworkCB mOnNetworkCB;
         OnTimeCB mOnTimeCB;

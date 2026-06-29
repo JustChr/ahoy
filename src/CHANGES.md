@@ -1,3 +1,7 @@
+Changelog v0.8.162 (JustChr fork)
+
+* OTA: pause the WiFi self-heal while an update is in flight. A slow upload starves the main loop and silences the MQTT heartbeat, which the 0.8.159/160 "associated but dead" watchdog mistook for a dead link - it would disconnect (159) or even reboot (160) the DTU mid-flash, truncating the image (the silent rollbacks 0.8.161 then surfaced as honest failures). The /update handler now flags an OTA active on the first chunk so neither the dead-link re-associate nor the offline-reboot can fire during the transfer; the flag clears on failure (success reboots anyway) and self-expires after 5 min as a failsafe against a dropped upload. (no measurable RAM/flash cost)
+
 Changelog v0.8.161 (JustChr fork)
 
 * OTA: harden the web update so it can't silently "succeed" then roll back. The old handler sized the update to free flash and called Update.end(true) (commit even if incomplete), reporting success from !hasError() - so a truncated/corrupt upload was committed and then rejected by the bootloader at boot, with no visible error. Now: (1) if the client sends an X-MD5 header the image is verified end-to-end and a mismatch fails the update before commit; (2) "success" and the reboot are gated on Update.end() actually finalizing a whole image - a failed OTA stays on the current firmware instead of bouncing; (3) all OTA status (start / success+bytes / failure reason) goes through the debug log so it shows on the web /serial console. Flash with curl ... -H "X-MD5: <md5>" to use the integrity check.
