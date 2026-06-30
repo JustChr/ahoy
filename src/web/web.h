@@ -31,6 +31,9 @@
 #include "html/h/about_html.h"
 #include "html/h/wizard_html.h"
 #include "html/h/history_html.h"
+#include "html/h/app_html.h"
+#include "html/h/app_css.h"
+#include "html/h/app_js.h"
 
 #define WEB_SERIAL_BUF_SIZE 2048
 
@@ -61,6 +64,11 @@ class Web {
             mWeb.on("/colors.css",     HTTP_GET,  std::bind(&Web::onColor,        this, std::placeholders::_1));
             mWeb.on("/style.css",      HTTP_GET,  std::bind(&Web::onCss,          this, std::placeholders::_1));
             mWeb.on("/api.js",         HTTP_GET,  std::bind(&Web::onApiJs,        this, std::placeholders::_1));
+
+            // Phase 3 SPA shell (additive; legacy pages stay the default until Phase 4)
+            mWeb.on("/app",            HTTP_GET,  std::bind(&Web::onApp,          this, std::placeholders::_1));
+            mWeb.on("/app.css",        HTTP_GET,  std::bind(&Web::onAppCss,       this, std::placeholders::_1));
+            mWeb.on("/app.js",         HTTP_GET,  std::bind(&Web::onAppJs,        this, std::placeholders::_1));
             mWeb.on("/grid_info.json", HTTP_GET,  std::bind(&Web::onGridInfoJson, this, std::placeholders::_1));
             mWeb.on("/favicon.ico",    HTTP_GET,  std::bind(&Web::onFavicon,      this, std::placeholders::_1));
             mWeb.onNotFound (                     std::bind(&Web::showNotFound,   this, std::placeholders::_1));
@@ -470,6 +478,29 @@ class Web {
             DPRINTLN(DBG_VERBOSE, F("onApiJs"));
 
             AsyncWebServerResponse *response = beginResponse(request, 200, F("text/javascript"), api_js, api_js_len);
+            response->addHeader(F("Content-Encoding"), "gzip");
+            if(request->hasParam("v"))
+                response->addHeader(F("Cache-Control"), F("max-age=604800"));
+            request->send(response);
+        }
+
+        // Phase 3 SPA shell. The shell itself carries no secrets; gating is server-side
+        // per sensitive /api call (§14). Honour the same index protection mask so the
+        // page can't be the lock bypass.
+        void onApp(AsyncWebServerRequest *request) {
+            getPage(request, PROT_MASK_INDEX, app_html, app_html_len);
+        }
+
+        void onAppCss(AsyncWebServerRequest *request) {
+            AsyncWebServerResponse *response = beginResponse(request, 200, F("text/css"), app_css, app_css_len);
+            response->addHeader(F("Content-Encoding"), "gzip");
+            if(request->hasParam("v"))
+                response->addHeader(F("Cache-Control"), F("max-age=604800"));
+            request->send(response);
+        }
+
+        void onAppJs(AsyncWebServerRequest *request) {
+            AsyncWebServerResponse *response = beginResponse(request, 200, F("text/javascript"), app_js, app_js_len);
             response->addHeader(F("Content-Encoding"), "gzip");
             if(request->hasParam("v"))
                 response->addHeader(F("Cache-Control"), F("max-age=604800"));

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="theme-color" content="#15171a">
+    <title>ahoy</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="stylesheet" href="app.css?v={#VERSION}">
+    <script>
+    /* translatable chrome strings — the build runs i18n on .html only, so app.js
+       reads its labels from here (see lang.json "app.html"). */
+    window.T = {
+        now: "{#APP_NOW}", system: "{#APP_SYSTEM}", setup: "{#APP_SETUP}",
+        history: "{#APP_HISTORY}", today: "{#APP_TODAY}", updated: "{#APP_UPDATED}",
+        ago: "{#APP_AGO}", noinv: "{#APP_NOINV}", waiting: "{#APP_WAITING}",
+        heap: "{#APP_HEAP}", uptime: "{#APP_UPTIME}", rfcadence: "{#APP_RFCADENCE}",
+        adaptive: "{#APP_ADAPTIVE}", conn: "{#APP_CONN}", off: "{#APP_OFF}"
+    };
+    </script>
+</head>
+<body>
+    <header>
+        <span class="brand">ahoy</span>
+        <span id="liveDot" class="dot"></span>
+        <span class="spacer"></span>
+        <button id="themeBtn" title="theme" aria-label="theme">☾</button>
+    </header>
+    <nav>
+        <a href="#/now" data-route="now">{#APP_NOW}</a>
+        <a href="#/system" data-route="system">{#APP_SYSTEM}</a>
+        <a href="/setup">{#APP_SETUP}</a>
+        <a href="/history">{#APP_HISTORY}</a>
+        <a href="/serial">Serial</a>
+        <a href="/update">Update</a>
+    </nav>
+    <main>
+        <div id="view"></div>
+    </main>
+    <footer>{#VERSION_GIT}</footer>
+    <script src="app.js?v={#VERSION}"></script>
+</body>
+</html>

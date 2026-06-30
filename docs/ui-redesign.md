@@ -209,10 +209,10 @@ The biggest stability win, measurable against the §1 baseline.
 
 ### Phase 3 — SPA shell + delta rendering (UI foundation)
 
-- [ ] `app.html`/`app.js`/`app.css` shell, hash routing, single-in-flight + backoff (§4, §5).
-- [ ] Delta DOM updates; pause on hidden/night.
-- [ ] Per-language build bundles (§16); auth = global lock, UI hiding cosmetic (§14).
-- *Exit criteria: navigation instant, no flicker, German build verified.*
+- [x] `app.html`/`app.js`/`app.css` shell, hash routing, single-in-flight + backoff (§4, §5). — *Standalone shell served **additively** at `/app` (legacy `/` untouched until Phase 4). `#/now` + `#/system` are SPA views; setup/history/serial/update link out for now. Self-contained light/dark (both palettes in `app.css`, localStorage toggle, no `/colors.css` fetch). Data layer hits Phase 1 `/api/meta` (once) + `/api/frame` (timer): single in-flight, `AbortController` timeout, backoff `5→15→30s`.*
+- [x] Delta DOM updates; pause on hidden/night. — *Cards built once on meta load; frames mutate only text nodes + bar widths (no `replaceChildren`). Pause on `document.hidden`; slow `30s` poll when all inverters OFF (night proxy — real sunrise/sunset not yet in `/api/meta`, deferred). Stale-tolerant: last good frame kept + dimmed with age on error/503.*
+- [x] Per-language build bundles (§16); auth = global lock, UI hiding cosmetic (§14). — *`window.T={#APP_*}` in `app.html` (build i18n runs on `.html` only; `app.js` reads chrome labels from it). `lang.json` `"app.html"` entry, 15 tokens en+de; `-de` build verified (bakes German, no leftover tokens). `/app` honours `PROT_MASK_INDEX`; no secrets in shell — gating stays server-side per `/api` call.*
+- *Exit criteria: navigation instant, no flicker, German build verified.* **Builds clean (esp8266 RAM 62.8 % unchanged, Flash 58.7→59.4 % ≈ +7 KB; esp8266-de clean). On-device runtime verification of `/app` still pending.**
 
 ### Phase 4 — Phone-first dashboard + view migration
 

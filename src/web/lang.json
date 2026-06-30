@@ -636,7 +636,7 @@
                 {
                     "token": "BTN_INV_ADD",
                     "en": "add Inverter",
-                    "de": "Wechselrichter hinzuf\u00FCgen"
+                    "de": "Wechselrichter hinzufügen"
                 },
                 {
                     "token": "INV_INPUT",
@@ -1757,6 +1757,86 @@
                     "token": "YIELD_DAY",
                     "en": "Yield day",
                     "de": "Tagesertrag"
+                }
+            ]
+        },
+        {
+            "name": "app.html",
+            "list": [
+                {
+                    "token": "APP_NOW",
+                    "en": "Now",
+                    "de": "Aktuell"
+                },
+                {
+                    "token": "APP_SYSTEM",
+                    "en": "System",
+                    "de": "System"
+                },
+                {
+                    "token": "APP_SETUP",
+                    "en": "Settings",
+                    "de": "Einstellungen"
+                },
+                {
+                    "token": "APP_HISTORY",
+                    "en": "History",
+                    "de": "Verlauf"
+                },
+                {
+                    "token": "APP_TODAY",
+                    "en": "Today",
+                    "de": "Heute"
+                },
+                {
+                    "token": "APP_UPDATED",
+                    "en": "updated",
+                    "de": "aktualisiert vor"
+                },
+                {
+                    "token": "APP_AGO",
+                    "en": "ago",
+                    "de": ""
+                },
+                {
+                    "token": "APP_NOINV",
+                    "en": "No inverters configured.",
+                    "de": "Keine Wechselrichter konfiguriert."
+                },
+                {
+                    "token": "APP_WAITING",
+                    "en": "Waiting for data…",
+                    "de": "Warte auf Daten …"
+                },
+                {
+                    "token": "APP_HEAP",
+                    "en": "Free heap",
+                    "de": "Freier Speicher"
+                },
+                {
+                    "token": "APP_UPTIME",
+                    "en": "Uptime",
+                    "de": "Laufzeit"
+                },
+                {
+                    "token": "APP_RFCADENCE",
+                    "en": "RF cadence",
+                    "de": "Funkintervall"
+                },
+                {
+                    "token": "APP_ADAPTIVE",
+                    "en": "Adaptive RF",
+                    "de": "Adaptives Funkintervall"
+                },
+                {
+                    "token": "APP_CONN",
+                    "en": "connected",
+                    "de": "verbunden"
+                },
+                {
+                    "token": "APP_OFF",
+                    "en": "off",
+                    "de": "aus"
                 }
             ]
         }
