@@ -1837,6 +1837,236 @@
                     "token": "APP_OFF",
                     "en": "off",
                     "de": "aus"
+                },
+                {
+                    "token": "APP_LIVE",
+                    "en": "Live",
+                    "de": "Live"
+                },
+                {
+                    "token": "APP_NETWORK",
+                    "en": "Network",
+                    "de": "Netzwerk"
+                },
+                {
+                    "token": "APP_DIAG",
+                    "en": "Diagnostics",
+                    "de": "Diagnose"
+                },
+                {
+                    "token": "APP_RADIO",
+                    "en": "Radio",
+                    "de": "Funk"
+                },
+                {
+                    "token": "APP_MEMORY",
+                    "en": "Memory",
+                    "de": "Speicher"
+                },
+                {
+                    "token": "APP_TOTAL",
+                    "en": "Total",
+                    "de": "Gesamt"
+                },
+                {
+                    "token": "APP_REBOOTS",
+                    "en": "Boot count",
+                    "de": "Startzähler"
+                },
+                {
+                    "token": "APP_RECONNECTS",
+                    "en": "WiFi reconnects",
+                    "de": "WLAN-Neuverbindungen"
+                },
+                {
+                    "token": "APP_DEADLINKS",
+                    "en": "Dead links",
+                    "de": "Tote Verbindungen"
+                },
+                {
+                    "token": "APP_OFFREBOOTS",
+                    "en": "Offline reboots",
+                    "de": "Offline-Neustarts"
+                },
+                {
+                    "token": "APP_LASTOFFLINE",
+                    "en": "Last offline",
+                    "de": "Zuletzt offline"
+                },
+                {
+                    "token": "APP_DISCREASON",
+                    "en": "Disconnect reason",
+                    "de": "Trennungsgrund"
+                },
+                {
+                    "token": "APP_RESETREASON",
+                    "en": "Reset reason",
+                    "de": "Reset-Grund"
+                },
+                {
+                    "token": "APP_FLASH",
+                    "en": "Flash used",
+                    "de": "Flash belegt"
+                },
+                {
+                    "token": "APP_FRAG",
+                    "en": "Heap frag",
+                    "de": "Heap-Fragmentierung"
+                },
+                {
+                    "token": "APP_CONNECTED",
+                    "en": "connected",
+                    "de": "verbunden"
+                },
+                {
+                    "token": "APP_DISCONNECTED",
+                    "en": "disconnected",
+                    "de": "getrennt"
+                },
+                {
+                    "token": "APP_CTRL",
+                    "en": "Controls",
+                    "de": "Steuerung"
+                },
+                {
+                    "token": "APP_ON",
+                    "en": "On",
+                    "de": "Ein"
+                },
+                {
+                    "token": "APP_OFFBTN",
+                    "en": "Off",
+                    "de": "Aus"
+                },
+                {
+                    "token": "APP_RESTART",
+                    "en": "Restart",
+                    "de": "Neustart"
+                },
+                {
+                    "token": "APP_LIMIT",
+                    "en": "Power limit",
+                    "de": "Leistungslimit"
+                },
+                {
+                    "token": "APP_SET",
+                    "en": "Set",
+                    "de": "Setzen"
+                },
+                {
+                    "token": "APP_PERSISTENT",
+                    "en": "persistent",
+                    "de": "dauerhaft"
+                },
+                {
+                    "token": "APP_REBOOT",
+                    "en": "Reboot DTU",
+                    "de": "DTU neu starten"
+                },
+                {
+                    "token": "APP_INFO",
+                    "en": "Info",
+                    "de": "Info"
+                },
+                {
+                    "token": "APP_ALARMS",
+                    "en": "Alarms",
+                    "de": "Alarme"
+                },
+                {
+                    "token": "APP_RADIOSTAT",
+                    "en": "Radio stats",
+                    "de": "Funkstatistik"
+                },
+                {
+                    "token": "APP_NOALARMS",
+                    "en": "No alarms",
+                    "de": "Keine Alarme"
+                },
+                {
+                    "token": "APP_LOCKED",
+                    "en": "Locked",
+                    "de": "Gesperrt"
+                },
+                {
+                    "token": "APP_PASSWORD",
+                    "en": "Password",
+                    "de": "Passwort"
+                },
+                {
+                    "token": "APP_UNLOCK",
+                    "en": "Unlock",
+                    "de": "Entsperren"
+                },
+                {
+                    "token": "APP_LOGOUT",
+                    "en": "Logout",
+                    "de": "Abmelden"
+                },
+                {
+                    "token": "APP_ERR",
+                    "en": "Error",
+                    "de": "Fehler"
+                },
+                {
+                    "token": "APP_RIGHTNOW",
+                    "en": "now",
+                    "de": "jetzt"
+                },
+                {
+                    "token": "APP_CAPACITY",
+                    "en": "Capacity",
+                    "de": "Kapazität"
+                },
+                {
+                    "token": "APP_PRODUCING",
+                    "en": "Producing",
+                    "de": "Aktiv"
+                },
+                {
+                    "token": "APP_STRINGS",
+                    "en": "Strings",
+                    "de": "Strings"
+                },
+                {
+                    "token": "APP_VOLTAGE",
+                    "en": "Voltage",
+                    "de": "Spannung"
+                },
+                {
+                    "token": "APP_FREQ",
+                    "en": "Frequency",
+                    "de": "Frequenz"
+                },
+                {
+                    "token": "APP_TEMP",
+                    "en": "Temp",
+                    "de": "Temp"
+                },
+                {
+                    "token": "APP_EFF",
+                    "en": "Efficiency",
+                    "de": "Wirkungsgrad"
+                },
+                {
+                    "token": "APP_OF",
+                    "en": "of",
+                    "de": "von"
+                },
+                {
+                    "token": "APP_GRIDPROFILE",
+                    "en": "Grid profile",
+                    "de": "Netzprofil"
+                },
+                {
+                    "token": "APP_NOTREAD",
+                    "en": "Profile not read yet",
+                    "de": "Profil noch nicht gelesen"
+                },
+                {
+                    "token": "APP_UNKNOWNPROFILE",
+                    "en": "Unknown profile",
+                    "de": "Unbekanntes Profil"
                 }
             ]
         }

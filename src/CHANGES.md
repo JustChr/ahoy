@@ -1,3 +1,12 @@
+Changelog v0.8.178 (JustChr fork)
+
+* UI: UI-redesign Phase 4 - the /app shell grows into a usable phone-first dashboard (still additive; legacy pages untouched and reachable). New solar visual identity (warm light/dark palette, gold accent). #/now is now a sun-disc ring gauge showing live output vs installed capacity, with Today / Capacity / Producing stats; inverter cards are quieter (status, power, one capacity bar) and expand on tap.
+* UI: tapping an inverter shows curated stats (voltage, frequency, temperature, efficiency, cos phi) and per-string cards (power + bar vs string max + V/A/today) instead of a raw field dump, plus on-demand tabs: Info (firmware/hardware), Alarms, Radio stats, and Grid profile (decoded against grid_info.json, same scheme as the legacy page).
+* UI: inverter controls in the SPA (on/off, restart, power-limit persistent/non-persistent x relative/absolute) and a DTU reboot, gated by the existing global lock (login/logout); #/system gains Network / Diagnostics / Radio / MQTT / Memory tiles from /api/system.
+* Heap: fix web-path heap fragmentation regression on ESP8266. /api/frame now streams its flat JSON straight to the socket instead of building a ~3 KB JsonDocument every poll, so the dominant recurring transient is gone (measured: largest free block ~8.7 -> ~13.1 KB, fragmentation ~28 -> ~12 % after load). Legacy /api/* keep the per-endpoint tiered document sizing from the prior fix.
+* Heap: permanent, cheap watermarks (since-boot minimum free heap, minimum largest block, maximum fragmentation) exposed in /api/system and shown in the #/system Memory tiles, so web-path heap regressions stay visible.
+* Build: convertHtml.py now reads/writes all web sources and lang.json as UTF-8 explicitly. Local Windows builds previously misread UTF-8 glyphs/umlauts as cp1252 (e.g. a chevron rendering as "a-euro"); local builds now match the Linux CI byte-for-byte.
+
 Changelog v0.8.172 (JustChr fork)
 
 * UI: new single-page web app (UI-redesign Phase 3) served additively at /app. The existing pages are untouched and stay the default - /app is a parallel, phone-first shell so it can be tried side-by-side and only becomes the default once it's proven (Phase 4). It loads once, hash-routes between views (#/now dashboard, #/system tiles) with no page reloads, and renders by mutating only the changed text/bars each frame (no flicker, minimal CPU).

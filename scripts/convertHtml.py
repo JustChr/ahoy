@@ -100,19 +100,19 @@ def readVersionFull(path):
     return version
 
 def htmlParts(file, header, nav, footer, versionPath, lang):
-    f = open(file, "r")
+    f = open(file, "r", encoding="utf-8")
     lines = f.readlines()
     f.close();
 
-    f = open(header, "r")
+    f = open(header, "r", encoding="utf-8")
     h = f.readlines()
     f.close()
 
-    f = open(nav, "r")
+    f = open(nav, "r", encoding="utf-8")
     n = f.readlines()
     f.close()
 
-    f = open(footer, "r")
+    f = open(footer, "r", encoding="utf-8")
     fo = f.readlines()
     f.close()
 
@@ -143,13 +143,13 @@ def htmlParts(file, header, nav, footer, versionPath, lang):
     p = translate(file, p, lang)
     p = translate("general", p, lang) # menu / header / footer
 
-    f = open("tmp/" + file, "w")
+    f = open("tmp/" + file, "w", encoding="utf-8")
     f.write(p);
     f.close();
     return p
 
 def findLang(file):
-    with open('../lang.json') as j:
+    with open('../lang.json', encoding="utf-8") as j:
         lang = json.load(j)
 
         for l in lang["files"]:
@@ -193,7 +193,7 @@ def convert2Header(inFile, versionPath, lang):
         if fileType == "html":
             data = htmlParts(inFile, "includes/header.html", "includes/nav.html", "includes/footer.html", versionPath, lang)
         else:
-            f = open(inFile, "r")
+            f = open(inFile, "r", encoding="utf-8")
             data = f.read()
             f.close()
 

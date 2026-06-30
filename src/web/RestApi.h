@@ -104,6 +104,7 @@ class RestApi {
             else
                 mHeapFrag = 0;
             #endif
+            updateHeapWm(mHeapFree, mHeapFreeBlk, mHeapFrag);
 
             #if defined(ESP32)
             size_t docCap = 8000;
@@ -907,6 +908,10 @@ class RestApi {
             obj[F("heap_frag")]         = mHeapFrag;
             obj[F("heap_max_free_blk")] = mHeapFreeBlk;
             obj[F("heap_free")]         = mHeapFree;
+            // since-boot watermarks (web-path heap health, for ongoing monitoring)
+            obj[F("heap_free_min")]     = mHeapFreeMin;
+            obj[F("heap_blk_min")]      = mHeapBlkMin;
+            obj[F("heap_frag_max")]     = mHeapFragMax;
 
             obj[F("par_size_app0")] = ESP.getFreeSketchSpace();
             obj[F("par_used_app0")] = ESP.getSketchSize();
@@ -1096,10 +1101,23 @@ class RestApi {
         // repeated JSON keys). Allocates a FIXED WEB_FRAME_DOC_SIZE doc regardless of heap state
         // (never getMaxFreeBlockSize()) and bows out with a tiny static 503 below WEB_HEAP_FLOOR
         // so a struggling device degrades instead of crashing; the client keeps its last frame.
+        // update since-boot heap watermarks (reads only — never sizes an allocation)
+        void updateHeapWm(uint32_t freeHeap, uint32_t blk, uint8_t frag) {
+            if(freeHeap < mHeapFreeMin) mHeapFreeMin = freeHeap;
+            if(blk < mHeapBlkMin)       mHeapBlkMin  = blk;
+            if(frag > mHeapFragMax)     mHeapFragMax = frag;
+        }
+
         void getFrame(AsyncWebServerRequest *request) {
             mApp->resetLockTimeout();
 
             uint32_t freeHeap = ESP.getFreeHeap();
+            #ifndef ESP32
+            updateHeapWm(freeHeap, ESP.getMaxFreeBlockSize(), ESP.getHeapFragmentation());
+            #else
+            uint32_t blk = heap_caps_get_largest_free_block(MALLOC_CAP_DEFAULT);
+            updateHeapWm(freeHeap, blk, (freeHeap > 0) ? (uint8_t)(100 - ((blk * 100) / freeHeap)) : 0);
+            #endif
             if(freeHeap < WEB_HEAP_FLOOR) {
                 AsyncWebServerResponse *r = request->beginResponse(503, F("application/json"), F("{\"e\":1}"));
                 r->addHeader(F("Retry-After"), F("2"));
@@ -1107,29 +1125,30 @@ class RestApi {
                 return;
             }
 
-            AsyncJsonResponse* response = new AsyncJsonResponse(false, WEB_FRAME_DOC_SIZE);
-            JsonObject root = response->getRoot();
+            // Stream a flat positional JSON straight to the socket — NO JsonDocument in the
+            // steady-state path (§2.1 phase 1b / §15.3). Peak heap = the response stream's small
+            // chunk buffer, not a 3 KB doc tree alloc'd+freed every poll, which was the dominant
+            // recurring transient feeding web-path fragmentation. Schema MUST match app.js:
+            //   {"t","v","g":[rssi,heap,uptime,Te,flags],"iv":[[status,pl,alarmCnt,rssi,age, 13×AC, 7×DC…]]}
+            AsyncResponseStream *response = request->beginResponseStream(F("application/json"));
+            response->addHeader(F("Access-Control-Allow-Origin"), F("*"));
 
-            root[F("t")] = mApp->getTimestamp();
-            root[F("v")] = WEB_FRAME_SCHEMA;
-
-            // g[] = [rssi, heap_free, uptime, Te, flags] — only what changes / is worth watching
-            // live. Te = effective RF interval from the §12 adaptive controller (= sendInterval
-            // when adaptive is off); flags bit1=mqtt connected, bit2=OTA, bit3=adaptive on
-            // (bit0 night reserved).
             uint8_t flags = 0;
             if(mApp->getMqttIsConnected()) flags |= 0x02;
             if(mApp->isOtaActive())        flags |= 0x04;
             if(mConfig->inst.rfAdaptive)   flags |= 0x08;
-            JsonArray g = root.createNestedArray(F("g"));
-            g.add((WiFi.status() != WL_CONNECTED) ? 0 : WiFi.RSSI());
-            g.add(freeHeap);
-            g.add(mApp->getUptime());
-            g.add(mApp->getRfInterval());
-            g.add(flags);
 
             uint32_t now = mApp->getTimestamp();
-            JsonArray ivArr = root.createNestedArray(F("iv"));
+            response->print(F("{\"t\":"));   response->print(now);
+            response->print(F(",\"v\":"));   response->print(WEB_FRAME_SCHEMA);
+            response->print(F(",\"g\":["));
+            response->print((WiFi.status() != WL_CONNECTED) ? 0 : WiFi.RSSI());
+            response->print(',');            response->print(freeHeap);
+            response->print(',');            response->print(mApp->getUptime());
+            response->print(',');            response->print(mApp->getRfInterval());
+            response->print(',');            response->print(flags);
+            response->print(F("],\"iv\":["));
+
             Inverter<> *iv;
             uint8_t cnt = 0;
             // iterate by position so frame iv[k] maps 1:1 to /api/meta iv[k] (same order, all
@@ -1138,29 +1157,33 @@ class RestApi {
                 iv = mSys->getInverterByPos(i);
                 if(NULL == iv)
                     continue;
+                if(cnt) response->print(',');
                 cnt++;
 
                 record_t<> *rec = iv->getRecordStruct(RealTimeRunData_Debug);
-                JsonArray a = ivArr.createNestedArray();
 
                 // 5 scalars: status, power-limit read, alarm count, rssi, age (s since last frame)
-                a.add((uint8_t)iv->getStatus());
-                a.add(ah::round1(iv->getChannelFieldValue(CH0, FLD_ACT_ACTIVE_PWR_LIMIT, iv->getRecordStruct(SystemConfigPara))));
-                a.add(iv->alarmCnt);
-                a.add(iv->rssi);
-                a.add((now > rec->ts) ? (now - rec->ts) : 0);
+                response->print('[');
+                response->print((uint8_t)iv->getStatus());
+                response->print(',');
+                response->print(ah::round1(iv->getChannelFieldValue(CH0, FLD_ACT_ACTIVE_PWR_LIMIT, iv->getRecordStruct(SystemConfigPara))), 1);
+                response->print(',');   response->print(iv->alarmCnt);
+                response->print(',');   response->print(iv->rssi);
+                response->print(',');   response->print((now > rec->ts) ? (now - rec->ts) : 0);
 
                 // ch0 = AC (13 fields), order = acList / acListHmt (mirrors getInverter())
                 uint8_t pos;
                 if(IV_HMT == iv->ivGen) {
                     for(uint8_t fld = 0; fld < sizeof(acListHmt); fld++) {
                         pos = iv->getPosByChFld(CH0, acListHmt[fld], rec);
-                        a.add((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0);
+                        response->print(',');
+                        response->print((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0, 3);
                     }
                 } else {
                     for(uint8_t fld = 0; fld < sizeof(acList); fld++) {
                         pos = iv->getPosByChFld(CH0, acList[fld], rec);
-                        a.add((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0);
+                        response->print(',');
+                        response->print((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0, 3);
                     }
                 }
 
@@ -1168,13 +1191,13 @@ class RestApi {
                 for(uint8_t ch = 0; (ch < iv->channels) && (ch < WEB_FRAME_MAX_CH); ch++) {
                     for(uint8_t fld = 0; fld < sizeof(dcList); fld++) {
                         pos = iv->getPosByChFld((ch + 1), dcList[fld], rec);
-                        a.add((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0);
+                        response->print(',');
+                        response->print((0xff != pos) ? ah::round3(iv->getValue(pos, rec)) : 0.0, 3);
                     }
                 }
+                response->print(']');
             }
-
-            response->addHeader("Access-Control-Allow-Origin", "*");
-            response->setLength();
+            response->print(F("]}"));
             request->send(response);
         }
 
@@ -1469,6 +1492,11 @@ class RestApi {
         uint32_t mTimezoneOffset = 0;
         uint32_t mHeapFree = 0, mHeapFreeBlk = 0;
         uint8_t mHeapFrag = 0;
+        // heap watermarks since boot — cheap, permanent monitoring so web-path heap regressions
+        // are visible in /api/system + the SPA Memory tiles (updated on the steady-state frame
+        // path and on legacy /api/* hits; reads only, never sizes an allocation).
+        uint32_t mHeapFreeMin = 0xffffffff, mHeapBlkMin = 0xffffffff;
+        uint8_t  mHeapFragMax = 0;
         uint8_t *mTmpBuf = nullptr;
         uint32_t mTmpSize = 0;
 };
