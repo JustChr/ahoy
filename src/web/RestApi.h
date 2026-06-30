@@ -106,10 +106,21 @@ class RestApi {
             #endif
 
             #if defined(ESP32)
-            AsyncJsonResponse* response = new AsyncJsonResponse(false, 8000);
+            size_t docCap = 8000;
             #else
-            AsyncJsonResponse* response = new AsyncJsonResponse(false, 6000);
+            // Per-endpoint doc sizing (§ heap-frag, measured 2026-06-30). The flat 6 KB doc was
+            // the dominant fragmentation source: a 6 KB transient block alloc/freed on EVERY
+            // legacy request drove the largest free block to ~5.5 KB (below the /api/frame
+            // floor) and left a persistent ~7 KB hole. Frequently-polled endpoints serialize
+            // <800 B, so a 2 KB doc is ample; only the rare, genuinely large setup/history loads
+            // keep the big doc (unchanged → no truncation regression).
+            size_t docCap = 2048;  // SMALL default (worst small payload ~800 B serialized + headroom)
+            if(path == F("setup") || path.startsWith(F("powerHistory")))
+                docCap = 6000;     // LARGE: full config / history arrays
+            else if(path == F("system") || path == F("html/system"))
+                docCap = 3072;     // MEDIUM: nested sysinfo (+ embedded HTML for html/system)
             #endif
+            AsyncJsonResponse* response = new AsyncJsonResponse(false, docCap);
             JsonObject root = response->getRoot();
 
             if(path == "html/system")         getHtmlSystem(request, root);
