@@ -1,3 +1,8 @@
+Changelog v0.8.183 (JustChr fork)
+
+* UI: fix the SPA settings page being unusable - collapsible sections kept snapping shut and the Save button appeared dead. The 5 s /api/frame poll was calling render() unconditionally, which rebuilt the whole settings form (innerHTML reset) on every tick, collapsing every section and tearing the Save button out from under a tap. render() on a poll is now limited to the live #/now view, which is the only view driven by /api/frame (and rebuilds cheaply via delta); settings/system/serial/update are left untouched until you navigate to them.
+* Perf: the /api/frame poll no longer hits the device at all while you're on a non-live route (settings/system/serial/update). It keeps its timer alive so it resumes the moment you return to #/now (with an immediate refresh instead of waiting out the pending interval), saving needless requests on the heap-constrained ESP8266.
+
 Changelog v0.8.178 (JustChr fork)
 
 * UI: UI-redesign Phase 4 - the /app shell grows into a usable phone-first dashboard (still additive; legacy pages untouched and reachable). New solar visual identity (warm light/dark palette, gold accent). #/now is now a sun-disc ring gauge showing live output vs installed capacity, with Today / Capacity / Producing stats; inverter cards are quieter (status, power, one capacity bar) and expand on tap.

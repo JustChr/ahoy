@@ -205,19 +205,25 @@
   function pollFrame() {
     if (inFlight) return;                 // §4.1 no stacking
     if (document.hidden) return;          // §4.4 paused
+    // Only the "now" view consumes /api/frame. Keep the timer chain alive on other
+    // routes but skip the fetch so we don't hammer the heap-constrained device.
+    if (route !== "now") { schedule(); return; }
     inFlight = true;
     getJSON("api/frame", function (err, j, status) {
       inFlight = false;
       if (err || !j || status === 503) {
         fails++;
-        markStale();
+        if (route === "now") markStale();
         schedule();
         setLiveDot();
         return;
       }
       fails = 0;
       frame = j;
-      render();
+      // Only the "now" view is driven by /api/frame and rebuilds cheaply via delta.
+      // Other views (settings/system/serial/update) do a full innerHTML rebuild, so
+      // re-rendering them on every poll would wipe user input and collapse sections.
+      if (route === "now") render(); else setLiveDot();
       schedule();
     });
   }
@@ -295,6 +301,8 @@
     if (route === "settings") loadSetup();
     if (route === "serial") startSerial(); else stopSerial();
     render();
+    // returning to the live view: refresh now instead of waiting on the pending timer
+    if (route === "now") { if (timer) clearTimeout(timer); pollFrame(); }
   }
 
   // ---- rendering (build once, then delta) ----
