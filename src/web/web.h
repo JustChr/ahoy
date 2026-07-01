@@ -101,6 +101,26 @@ class Web {
         }
 
         void tickSecond() {
+            // Reclaim a dropped OTA. If the upload connection dies mid-flash the final callback
+            // never fires, so without this Update's buffer leaks (~7 KB) and the OTA-quiesce
+            // (data endpoints 503, RF/MQTT stood down, self-heal paused) would hang on until the
+            // 5-min network failsafe. This runs in loop context (safe for flash ops), frees the
+            // buffer, and clears the OTA flag - which auto-restores every quiesced subsystem
+            // (they are all live isOtaActive() guards), leaving us on the current firmware.
+            if (mOtaStarted && ((millis() - mOtaLastActivityMs) >= OTA_STALL_MS)) {
+                DPRINTLN(DBG_INFO, F("OTA stalled/dropped - reclaiming buffer, resuming normal ops"));
+                #ifndef ESP32
+                if (Update.isRunning())
+                    Update.end();   // aborts the staged image + frees the sector buffer/MD5 ctx
+                #else
+                if (Update.isRunning())
+                    Update.abort();
+                #endif
+                mOtaStarted = false;
+                mUpdateOk = false;
+                mApp->setOtaActive(false);
+            }
+
             if (mSerialClientConnnected) {
                 if(nullptr == mSerialBuf)
                     return;
@@ -138,6 +158,7 @@ class Web {
                 // quiesces RF polling / MQTT publish / web data endpoints / web-serial so the
                 // flash has the ~13 KB heap to itself.
                 mApp->setOtaActive(true);
+                mOtaStarted = true;
                 DPRINTLN(DBG_INFO, "OTA start: " + filename);
 
                 // pre-flight: refuse cleanly (stay on current fw) before touching the flash if
@@ -181,6 +202,9 @@ class Web {
                 if (!mOtaDenied && request->hasHeader(F("X-MD5")))
                     Update.setMD5(request->getHeader(F("X-MD5"))->value().c_str());
             }
+            // refresh on every chunk so the stall watchdog (tickSecond) only fires on a genuinely
+            // dropped transfer, never during a legitimately slow-but-progressing flash.
+            mOtaLastActivityMs = millis();
             if (!mOtaDenied && !Update.hasError()) {
                 if (Update.write(data, len) != len) {
                     Update.printError(Serial);
@@ -195,6 +219,7 @@ class Web {
                 #endif
             }
             if (final) {
+                mOtaStarted = false;  // transfer completed one way or another; disarm stall watchdog
                 if (mOtaDenied) {
                     // never began (or aborted pre-flight): stay on the current firmware and
                     // resume the self-heal. showUpdate() reports "failed".
@@ -1060,10 +1085,16 @@ class Web {
         bool mUploadFail = false;
         bool mUpdateOk = false;     // set true only when an OTA image fully finalized (size/MD5 OK)
         bool mOtaDenied = false;    // pre-flight refused this image (low heap / too big): stay on current fw
+        bool mOtaStarted = false;   // an OTA upload began; watch for a dropped/stalled transfer
+        uint32_t mOtaLastActivityMs = 0; // millis() of the last received upload chunk
 
         // refuse an OTA cleanly if the device can't safely take it, rather than half-writing the
         // flash. Keep margin for Update's sector buffer + the TCP/web stack still in the callback.
         static constexpr uint32_t OTA_HEAP_FLOOR = 8192;
+        // if the upload connection drops mid-flash the final callback never runs, so Update's
+        // ~7 KB buffer would leak and the OTA-quiesce would linger the full 5-min network failsafe.
+        // No chunk for this long => treat the transfer as dead and reclaim (see tickSecond).
+        static constexpr uint32_t OTA_STALL_MS = 12000;
 };
 
 #endif /*__WEB_H__*/

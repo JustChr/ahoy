@@ -131,20 +131,29 @@ void app::setup() {
 void app::loop(void) {
     esp_task_wdt_reset();
 
-    mNrfRadio.loop();
+    // OTA quiesce: give Update.write the tiny (~13 KB) heap to itself for the flash. RF receive
+    // and payload parsing allocate transiently, so stand the radio + communication down for the
+    // OTA duration - a dropped RF frame during a ~30 s flash is harmless, and they resume the
+    // moment the flag clears (every guard below is a live isOtaActive() check, not a latch).
+    const bool otaActive = mNetwork->isOtaActive();
 
-    #if defined(ESP32)
-    mCmtRadio.loop();
-    #endif
+    if (!otaActive) {
+        mNrfRadio.loop();
+
+        #if defined(ESP32)
+        mCmtRadio.loop();
+        #endif
+    }
 
     ah::Scheduler::loop();
-    mCommunication.loop();
+
+    if (!otaActive)
+        mCommunication.loop();
 
     #if defined(ENABLE_MQTT)
-    // OTA quiesce: don't pump MQTT (publishes + serialization) while a flash is in flight,
-    // so the upload has the heap to itself. The link goes quiet for the OTA duration and
-    // reconnects afterwards; the dead-link self-heal is already paused during OTA.
-    if (mMqttEnabled && mNetworkConnected && !mNetwork->isOtaActive())
+    // don't pump MQTT (publishes + serialization) while a flash is in flight either; the link
+    // goes quiet for the OTA duration and reconnects afterwards.
+    if (mMqttEnabled && mNetworkConnected && !otaActive)
         mMqtt.loop();
     #endif
 
