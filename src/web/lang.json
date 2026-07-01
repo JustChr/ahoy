@@ -2067,6 +2067,391 @@
                     "token": "APP_UNKNOWNPROFILE",
                     "en": "Unknown profile",
                     "de": "Unbekanntes Profil"
+                },
+                {
+                    "token": "APP_SET_SYSTEM",
+                    "en": "System",
+                    "de": "System"
+                },
+                {
+                    "token": "APP_DEVNAME",
+                    "en": "Device name",
+                    "de": "Gerätename"
+                },
+                {
+                    "token": "APP_REBOOTMID",
+                    "en": "Reboot at midnight",
+                    "de": "Neustart um Mitternacht"
+                },
+                {
+                    "token": "APP_DARKMODE",
+                    "en": "Dark mode",
+                    "de": "Dunkler Modus"
+                },
+                {
+                    "token": "APP_REGION",
+                    "en": "Region",
+                    "de": "Region"
+                },
+                {
+                    "token": "APP_TIMEZONE",
+                    "en": "Timezone",
+                    "de": "Zeitzone"
+                },
+                {
+                    "token": "APP_CUSTLINK",
+                    "en": "Custom link",
+                    "de": "Eigener Link"
+                },
+                {
+                    "token": "APP_CUSTLINKTXT",
+                    "en": "Custom link text",
+                    "de": "Text eigener Link"
+                },
+                {
+                    "token": "APP_APPWD",
+                    "en": "AP password",
+                    "de": "AP-Passwort"
+                },
+                {
+                    "token": "APP_SSIDHIDDEN",
+                    "en": "Hide SSID",
+                    "de": "SSID verbergen"
+                },
+                {
+                    "token": "APP_STATICIP",
+                    "en": "Static IP (leave blank for DHCP)",
+                    "de": "Statische IP (leer = DHCP)"
+                },
+                {
+                    "token": "APP_SUBMASK",
+                    "en": "Subnet mask",
+                    "de": "Subnetzmaske"
+                },
+                {
+                    "token": "APP_SETPROT",
+                    "en": "Protection",
+                    "de": "Schutz"
+                },
+                {
+                    "token": "APP_ADMINPWD",
+                    "en": "Admin password",
+                    "de": "Admin-Passwort"
+                },
+                {
+                    "token": "APP_HIDE",
+                    "en": "Hide",
+                    "de": "Verbergen"
+                },
+                {
+                    "token": "APP_SETINV",
+                    "en": "Inverters",
+                    "de": "Wechselrichter"
+                },
+                {
+                    "token": "APP_INTERVAL",
+                    "en": "Interval [s]",
+                    "de": "Intervall [s]"
+                },
+                {
+                    "token": "APP_INVRSTMID",
+                    "en": "Reset values at midnight",
+                    "de": "Werte um Mitternacht zurücksetzen"
+                },
+                {
+                    "token": "APP_INVRSTSR",
+                    "en": "Reset at sunrise",
+                    "de": "Zurücksetzen bei Sonnenaufgang"
+                },
+                {
+                    "token": "APP_INVRSTSS",
+                    "en": "Reset at sunset",
+                    "de": "Zurücksetzen bei Sonnenuntergang"
+                },
+                {
+                    "token": "APP_INVRSTNA",
+                    "en": "Reset when unavailable",
+                    "de": "Zurücksetzen wenn nicht verfügbar"
+                },
+                {
+                    "token": "APP_INVRSTMAX",
+                    "en": "Reset max values at midnight",
+                    "de": "Maximalwerte um Mitternacht zurücksetzen"
+                },
+                {
+                    "token": "APP_STRTWOT",
+                    "en": "Start without time",
+                    "de": "Start ohne Zeit"
+                },
+                {
+                    "token": "APP_RDGRID",
+                    "en": "Read grid profile",
+                    "de": "Netzprofil lesen"
+                },
+                {
+                    "token": "APP_SETSUN",
+                    "en": "Sunrise / Sunset",
+                    "de": "Sonnenauf-/-untergang"
+                },
+                {
+                    "token": "APP_LATITUDE",
+                    "en": "Latitude",
+                    "de": "Breitengrad"
+                },
+                {
+                    "token": "APP_LONGITUDE",
+                    "en": "Longitude",
+                    "de": "Längengrad"
+                },
+                {
+                    "token": "APP_OFFSETSR",
+                    "en": "Sunrise offset",
+                    "de": "Versatz Sonnenaufgang"
+                },
+                {
+                    "token": "APP_OFFSETSS",
+                    "en": "Sunset offset",
+                    "de": "Versatz Sonnenuntergang"
+                },
+                {
+                    "token": "APP_BROKER",
+                    "en": "Broker / server IP",
+                    "de": "Broker / Server-IP"
+                },
+                {
+                    "token": "APP_USER",
+                    "en": "User",
+                    "de": "Benutzer"
+                },
+                {
+                    "token": "APP_RETAIN",
+                    "en": "Retain",
+                    "de": "Beibehalten"
+                },
+                {
+                    "token": "APP_SETPINOUT",
+                    "en": "Pinout",
+                    "de": "Pinbelegung"
+                },
+                {
+                    "token": "APP_LEDPRODUCING",
+                    "en": "producing",
+                    "de": "produziert"
+                },
+                {
+                    "token": "APP_LEDNIGHT",
+                    "en": "night",
+                    "de": "Nacht"
+                },
+                {
+                    "token": "APP_LEDPOLARITY",
+                    "en": "LED polarity",
+                    "de": "LED-Polarität"
+                },
+                {
+                    "token": "APP_LOWACTIVE",
+                    "en": "low active",
+                    "de": "low-aktiv"
+                },
+                {
+                    "token": "APP_HIGHACTIVE",
+                    "en": "high active",
+                    "de": "high-aktiv"
+                },
+                {
+                    "token": "APP_LEDLUM",
+                    "en": "LED luminance (0-255)",
+                    "de": "LED-Helligkeit (0-255)"
+                },
+                {
+                    "token": "APP_NRFENABLE",
+                    "en": "NRF24 enable",
+                    "de": "NRF24 aktivieren"
+                },
+                {
+                    "token": "APP_SETSERIAL",
+                    "en": "Serial console",
+                    "de": "Serielle Konsole"
+                },
+                {
+                    "token": "APP_LOGPRINTDATA",
+                    "en": "Print inverter data",
+                    "de": "Wechselrichterdaten ausgeben"
+                },
+                {
+                    "token": "APP_LOGDEBUG",
+                    "en": "Serial debug",
+                    "de": "Serielles Debug"
+                },
+                {
+                    "token": "APP_LOGPRIV",
+                    "en": "Privacy mode",
+                    "de": "Datenschutzmodus"
+                },
+                {
+                    "token": "APP_LOGTRACE",
+                    "en": "Print all traces",
+                    "de": "Alle Traces ausgeben"
+                },
+                {
+                    "token": "APP_LOG2MQTT",
+                    "en": "Log to MQTT",
+                    "de": "Log an MQTT"
+                },
+                {
+                    "token": "APP_REBOOTSAVE",
+                    "en": "Reboot after save",
+                    "de": "Neustart nach Speichern"
+                },
+                {
+                    "token": "APP_EXPORT",
+                    "en": "Export settings",
+                    "de": "Einstellungen exportieren"
+                },
+                {
+                    "token": "APP_ERASE",
+                    "en": "Factory reset",
+                    "de": "Werkseinstellungen"
+                },
+                {
+                    "token": "APP_ENABLED",
+                    "en": "on",
+                    "de": "an"
+                },
+                {
+                    "token": "APP_DISABLED",
+                    "en": "off",
+                    "de": "aus"
+                },
+                {
+                    "token": "APP_ADDINV",
+                    "en": "Add inverter",
+                    "de": "Wechselrichter hinzufügen"
+                },
+                {
+                    "token": "APP_ENABLE",
+                    "en": "Enabled",
+                    "de": "Aktiviert"
+                },
+                {
+                    "token": "APP_SERIAL",
+                    "en": "Serial",
+                    "de": "Seriennummer"
+                },
+                {
+                    "token": "APP_NAME",
+                    "en": "Name",
+                    "de": "Name"
+                },
+                {
+                    "token": "APP_POWERLEVEL",
+                    "en": "Power level",
+                    "de": "Sendeleistung"
+                },
+                {
+                    "token": "APP_PAUSENIGHT",
+                    "en": "Pause during night",
+                    "de": "Pause während der Nacht"
+                },
+                {
+                    "token": "APP_CANCEL",
+                    "en": "Cancel",
+                    "de": "Abbrechen"
+                },
+                {
+                    "token": "APP_NTPSERVER",
+                    "en": "NTP server / IP",
+                    "de": "NTP-Server / IP"
+                },
+                {
+                    "token": "APP_NTPPORT",
+                    "en": "NTP port",
+                    "de": "NTP-Port"
+                },
+                {
+                    "token": "APP_CONSOLE",
+                    "en": "Console",
+                    "de": "Konsole"
+                },
+                {
+                    "token": "APP_CLEAR",
+                    "en": "Clear",
+                    "de": "Löschen"
+                },
+                {
+                    "token": "APP_AUTOSCROLL",
+                    "en": "Autoscroll",
+                    "de": "Autoscroll"
+                },
+                {
+                    "token": "APP_COPY",
+                    "en": "Copy",
+                    "de": "Kopieren"
+                },
+                {
+                    "token": "APP_SELECTFILE",
+                    "en": "Select firmware (*.bin)",
+                    "de": "Firmware wählen (*.bin)"
+                },
+                {
+                    "token": "APP_INSTALLED",
+                    "en": "Installed",
+                    "de": "Installiert"
+                },
+                {
+                    "token": "APP_UPDATE",
+                    "en": "Update",
+                    "de": "Update"
+                },
+                {
+                    "token": "APP_DOWNLOADS",
+                    "en": "Downloads",
+                    "de": "Downloads"
+                },
+                {
+                    "token": "APP_OTANOTPOSSIBLE",
+                    "en": "Upgrade not possible from this file",
+                    "de": "Upgrade mit dieser Datei nicht möglich"
+                },
+                {
+                    "token": "APP_OTADIFFENV",
+                    "en": "This firmware is for a different device type. Continue anyway?",
+                    "de": "Diese Firmware ist für einen anderen Gerätetyp. Trotzdem fortfahren?"
+                },
+                {
+                    "token": "APP_OTASTARTED",
+                    "en": "Update started…",
+                    "de": "Update gestartet …"
+                },
+                {
+                    "token": "APP_OTAREBOOTING",
+                    "en": "Uploaded — device rebooting…",
+                    "de": "Hochgeladen — Gerät startet neu …"
+                },
+                {
+                    "token": "APP_OTAFAILED",
+                    "en": "Update failed — still on previous firmware. Please retry.",
+                    "de": "Update fehlgeschlagen — weiterhin alte Firmware. Bitte erneut versuchen."
+                },
+                {
+                    "token": "APP_NTPSETBROWSER",
+                    "en": "Set from browser",
+                    "de": "Aus Browser übernehmen"
+                },
+                {
+                    "token": "APP_NTPSYNC",
+                    "en": "Sync NTP",
+                    "de": "NTP synchronisieren"
+                },
+                {
+                    "token": "APP_MQTTDISCOVERY",
+                    "en": "Send HA discovery",
+                    "de": "HA-Discovery senden"
+                },
+                {
+                    "token": "APP_IMPORT",
+                    "en": "Import settings",
+                    "de": "Einstellungen importieren"
                 }
             ]
         }

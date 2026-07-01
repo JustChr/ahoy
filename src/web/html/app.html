@@ -33,7 +33,34 @@
         rightnow: "{#APP_RIGHTNOW}", capacity: "{#APP_CAPACITY}", producing: "{#APP_PRODUCING}",
         strings: "{#APP_STRINGS}", voltage: "{#APP_VOLTAGE}", freq: "{#APP_FREQ}",
         temp: "{#APP_TEMP}", eff: "{#APP_EFF}", of: "{#APP_OF}",
-        gridprofile: "{#APP_GRIDPROFILE}", notread: "{#APP_NOTREAD}", unknownprofile: "{#APP_UNKNOWNPROFILE}"
+        gridprofile: "{#APP_GRIDPROFILE}", notread: "{#APP_NOTREAD}", unknownprofile: "{#APP_UNKNOWNPROFILE}",
+        setSystem: "{#APP_SET_SYSTEM}", devname: "{#APP_DEVNAME}", rebootmid: "{#APP_REBOOTMID}",
+        darkmode: "{#APP_DARKMODE}", region: "{#APP_REGION}", timezone: "{#APP_TIMEZONE}",
+        custlink: "{#APP_CUSTLINK}", custlinktxt: "{#APP_CUSTLINKTXT}", setNetwork: "{#APP_NETWORK}",
+        appwd: "{#APP_APPWD}", ssidhidden: "{#APP_SSIDHIDDEN}", staticip: "{#APP_STATICIP}",
+        submask: "{#APP_SUBMASK}", setProt: "{#APP_SETPROT}", adminpwd: "{#APP_ADMINPWD}",
+        hide: "{#APP_HIDE}", setInv: "{#APP_SETINV}", interval: "{#APP_INTERVAL}",
+        invrstmid: "{#APP_INVRSTMID}", invrstsr: "{#APP_INVRSTSR}", invrstss: "{#APP_INVRSTSS}",
+        invrstna: "{#APP_INVRSTNA}", invrstmax: "{#APP_INVRSTMAX}", strtwot: "{#APP_STRTWOT}",
+        rdgrid: "{#APP_RDGRID}", setSun: "{#APP_SETSUN}", latitude: "{#APP_LATITUDE}",
+        longitude: "{#APP_LONGITUDE}", offsetsr: "{#APP_OFFSETSR}", offsetss: "{#APP_OFFSETSS}",
+        broker: "{#APP_BROKER}", user: "{#APP_USER}", retain: "{#APP_RETAIN}",
+        setPinout: "{#APP_SETPINOUT}", ledproducing: "{#APP_LEDPRODUCING}", lednight: "{#APP_LEDNIGHT}",
+        ledpolarity: "{#APP_LEDPOLARITY}", lowactive: "{#APP_LOWACTIVE}", highactive: "{#APP_HIGHACTIVE}",
+        ledlum: "{#APP_LEDLUM}", nrfenable: "{#APP_NRFENABLE}", setSerial: "{#APP_SETSERIAL}",
+        logprintdata: "{#APP_LOGPRINTDATA}", logdebug: "{#APP_LOGDEBUG}", logpriv: "{#APP_LOGPRIV}",
+        logtrace: "{#APP_LOGTRACE}", log2mqtt: "{#APP_LOG2MQTT}", rebootsave: "{#APP_REBOOTSAVE}",
+        export: "{#APP_EXPORT}", erase: "{#APP_ERASE}", enabled: "{#APP_ENABLED}",
+        disabled: "{#APP_DISABLED}", addinv: "{#APP_ADDINV}", enable: "{#APP_ENABLE}",
+        serial: "{#APP_SERIAL}", name: "{#APP_NAME}", powerlevel: "{#APP_POWERLEVEL}",
+        pausenight: "{#APP_PAUSENIGHT}", cancel: "{#APP_CANCEL}", ntpserver: "{#APP_NTPSERVER}",
+        ntpport: "{#APP_NTPPORT}", console: "{#APP_CONSOLE}", clear: "{#APP_CLEAR}",
+        autoscroll: "{#APP_AUTOSCROLL}", copy: "{#APP_COPY}", selectfile: "{#APP_SELECTFILE}",
+        installed: "{#APP_INSTALLED}", update: "{#APP_UPDATE}", downloads: "{#APP_DOWNLOADS}",
+        otanotpossible: "{#APP_OTANOTPOSSIBLE}", otadiffenv: "{#APP_OTADIFFENV}",
+        otastarted: "{#APP_OTASTARTED}", otarebooting: "{#APP_OTAREBOOTING}", otafailed: "{#APP_OTAFAILED}",
+        ntpsetbrowser: "{#APP_NTPSETBROWSER}", ntpsync: "{#APP_NTPSYNC}",
+        mqttdiscovery: "{#APP_MQTTDISCOVERY}", import: "{#APP_IMPORT}"
     };
     </script>
 </head>
@@ -47,10 +74,9 @@
     <nav>
         <a href="#/now" data-route="now">{#APP_NOW}</a>
         <a href="#/system" data-route="system">{#APP_SYSTEM}</a>
-        <a href="/setup">{#APP_SETUP}</a>
-        <a href="/history">{#APP_HISTORY}</a>
-        <a href="/serial">Serial</a>
-        <a href="/update">Update</a>
+        <a href="#/settings" data-route="settings">{#APP_SETUP}</a>
+        <a href="#/serial" data-route="serial">{#APP_CONSOLE}</a>
+        <a href="#/update" data-route="update">{#APP_UPDATE}</a>
     </nav>
     <main>
         <div id="view"></div>

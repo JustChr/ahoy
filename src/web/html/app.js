@@ -30,6 +30,9 @@
   var sys = null;              // last /api/system (on-demand, system view only)
   var sysInFlight = false;
   var gridInfo = null;         // grid_info.json decode table (fetched once, cached)
+  var cfg = null;              // /api/setup (settings view, on-demand, cached)
+  var ivl = null;              // /api/inverter/list (settings view, cached)
+  var setupInFlight = false;
   var fails = 0;
   var inFlight = false;
   var timer = null;
@@ -289,6 +292,8 @@
     built = false; // force rebuild of the view container
     expanded = -1; // collapse any open card detail on navigation
     if (route === "system") loadSystem();
+    if (route === "settings") loadSetup();
+    if (route === "serial") startSerial(); else stopSerial();
     render();
   }
 
@@ -298,6 +303,9 @@
     if (!root) return;
     updateAuthBar();
     if (route === "system") { renderSystem(root); return; }
+    if (route === "settings") { renderSettings(root); return; }
+    if (route === "serial") { renderSerial(root); return; }
+    if (route === "update") { renderUpdate(root); return; }
     renderNow(root);
     setLiveDot();
   }
@@ -767,6 +775,535 @@
       f.appendChild(el("span", null, meta.esp_type));
       root.appendChild(f);
     }
+  }
+
+  // ============================================================================
+  // Slice 4c — native settings (config) view. Faithful port of setup.html for the
+  // shipped esp8266 env (NRF24 only; no CMT/ethernet/display). SAFETY: the form
+  // carries EXACTLY the same input names the legacy /save handler reads and POSTs
+  // urlencoded to /save — byte-identical to the legacy submission, so the server
+  // can't tell the difference (any missing field would clobber pins to 0). Values
+  // are populated from /api/setup + /api/inverter/list. Inverters use the same
+  // save_iv JSON to /api/setup as the legacy modal.
+  // ============================================================================
+  var ESP8266_PINS = [
+    [255, "off"], [0, "D3 (GPIO0)"], [1, "TX (GPIO1)"], [2, "D4 (GPIO2)"],
+    [3, "RX (GPIO3)"], [4, "D2 (GPIO4, SDA)"], [5, "D1 (GPIO5, SCL)"], [6, "GPIO6"],
+    [7, "GPIO7"], [8, "GPIO8"], [9, "GPIO9"], [10, "GPIO10"], [11, "GPIO11"],
+    [12, "D6 (GPIO12)"], [13, "D7 (GPIO13)"], [14, "D5 (GPIO14)"], [15, "D8 (GPIO15)"],
+    [16, "D0 (GPIO16 - no IRQ)"]
+  ];
+  var NRF_PA = [[0, "MIN"], [1, "LOW"], [2, "HIGH"], [3, "MAX"]];
+
+  function loadSetup() {
+    if (setupInFlight) return;
+    setupInFlight = true;
+    getJSON("api/setup", function (err, j) {
+      if (err || !j) { setupInFlight = false; if (route === "settings") renderSettings($("#view")); return; }
+      cfg = j;
+      getJSON("api/inverter/list", function (e2, l) {
+        setupInFlight = false;
+        if (!e2 && l) ivl = l;
+        if (route === "settings") renderSettings($("#view"));
+      });
+    });
+  }
+
+  // form-control builders (native inputs, delta-free — settings view is rebuilt on entry)
+  function field(label, ctrl) {
+    var r = el("div", "fld");
+    r.appendChild(el("label", "fl", label));
+    r.appendChild(ctrl);
+    return r;
+  }
+  function inp(name, val, type) {
+    var i = el("input"); i.name = name; i.type = type || "text";
+    if (val != null) i.value = val;
+    return i;
+  }
+  function chk(name, on) {
+    var i = el("input"); i.type = "checkbox"; i.name = name; i.checked = !!on;
+    return i;
+  }
+  function select(name, opts, sel) {
+    var s = el("select"); s.name = name;
+    for (var i = 0; i < opts.length; i++) {
+      var o = el("option", null, opts[i][1]); o.value = opts[i][0];
+      if (String(opts[i][0]) === String(sel)) o.selected = true;
+      s.appendChild(o);
+    }
+    return s;
+  }
+  // collapsible section wrapped so long forms stay navigable on a phone
+  function fsec(form, title, open) {
+    var h = el("button", "s-head" + (open ? " open" : "")); h.type = "button";
+    h.textContent = title;
+    var body = el("div", "s-body"); body.style.display = open ? "" : "none";
+    h.addEventListener("click", function () {
+      h.classList.toggle("open");
+      body.style.display = body.style.display === "none" ? "" : "none";
+    });
+    form.appendChild(h); form.appendChild(body);
+    return body;
+  }
+
+  function renderSettings(root) {
+    root.innerHTML = "";
+    root.classList.remove("stale");
+    if (!cfg) { root.appendChild(el("div", "empty", t("waiting", "Waiting for data…"))); return; }
+
+    var sys = cfg.system || {}, net = (sys.network || {}), gen = cfg.generic || {},
+        sip = cfg.static_ip || {}, mq = cfg.mqtt || {}, ntp = cfg.ntp || {},
+        sun = cfg.sun || {}, pin = cfg.pinout || {}, nrf = cfg.radioNrf || {},
+        ser = cfg.serial || {};
+
+    var form = el("form", "settings");
+    form.method = "post"; form.action = "/save";
+    // legacy submit hook: normalise decimal comma → dot before native POST
+    form.addEventListener("submit", function () {
+      var ins = form.querySelectorAll("input[type=number]");
+      for (var i = 0; i < ins.length; i++)
+        if (ins[i].value.indexOf(",") !== -1) ins[i].value = ins[i].value.replace(",", ".");
+    });
+
+    // ---- System ----
+    var b = fsec(form, t("setSystem", "System"), true);
+    b.appendChild(field(t("devname", "Device name"), inp("device", sys.device_name)));
+    b.appendChild(field(t("rebootmid", "Reboot at midnight"), chk("schedReboot", sys.sched_reboot)));
+    b.appendChild(field(t("darkmode", "Dark mode"), chk("darkMode", sys.dark_mode)));
+    var regionOpts = [[0, "Europe (860 - 870 MHz)"], [1, "USA, Indonesia (905 - 925 MHz)"], [2, "Brazil (915 - 928 MHz)"]];
+    b.appendChild(field(t("region", "Region"), select("region", regionOpts, gen.region)));
+    var tzOpts = [];
+    for (var z = 0; z < 24; z += 0.5) tzOpts.push([z, ((z - 12 > 0) ? "+" : "") + String(z - 12)]);
+    b.appendChild(field(t("timezone", "Timezone"), select("timezone", tzOpts, (gen.timezone != null ? gen.timezone + 12 : 12))));
+    b.appendChild(field(t("custlink", "Custom link"), inp("cstLnk", gen.cst_lnk)));
+    b.appendChild(field(t("custlinktxt", "Custom link text"), inp("cstLnkTxt", gen.cst_lnk_txt)));
+
+    // ---- Network ----
+    b = fsec(form, t("setNetwork", "Network"));
+    b.appendChild(field(t("appwd", "AP password"), inp("ap_pwd", net.ap_pwd)));
+    b.appendChild(field("SSID", inp("ssid", net.ssid)));
+    b.appendChild(field(t("ssidhidden", "Hide SSID"), chk("hidd", net.hidd)));
+    // WiFi password: {PWD} sentinel means "unchanged" server-side — never echo the real one
+    b.appendChild(field(t("password", "Password"), inp("pwd", "{PWD}", "password")));
+    b.appendChild(el("div", "sub", t("staticip", "Static IP (leave blank for DHCP)")));
+    b.appendChild(field("IP", inp("ipAddr", sip.ip)));
+    b.appendChild(field(t("submask", "Subnet mask"), inp("ipMask", sip.mask)));
+    b.appendChild(field("DNS 1", inp("ipDns1", sip.dns1)));
+    b.appendChild(field("DNS 2", inp("ipDns2", sip.dns2)));
+    b.appendChild(field("Gateway", inp("ipGateway", sip.gateway)));
+
+    // ---- Protection (global lock) ----
+    b = fsec(form, t("setProt", "Protection"));
+    // adminpwd: blank when no password set (so saving blank keeps it off), else {PWD} sentinel
+    b.appendChild(field(t("adminpwd", "Admin password"), inp("adminpwd", sys.pwd_set ? "{PWD}" : "", "password")));
+    var maskNames = ["Index", "Live", "Serial", "Settings", "Update", "System", "History"];
+    for (var mI = 0; mI < 7; mI++) {
+      var onm = ((sys.prot_mask & (1 << mI)) === (1 << mI));
+      b.appendChild(field(t("hide", "Hide") + " " + maskNames[mI], chk("protMask" + mI, onm)));
+    }
+
+    // ---- Inverters ----
+    b = fsec(form, t("setInv", "Inverters"));
+    b.appendChild(buildInvTable());
+    var gI = (ivl || {});
+    b.appendChild(field(t("interval", "Interval [s]"), inp("invInterval", gI.interval, "number")));
+    b.appendChild(field(t("invrstmid", "Reset values at midnight"), chk("invRstMid", gI.rstMid)));
+    b.appendChild(field(t("invrstsr", "Reset at sunrise"), chk("invRstComStart", gI.rstComStart)));
+    b.appendChild(field(t("invrstss", "Reset at sunset"), chk("invRstComStop", gI.rstComStop)));
+    b.appendChild(field(t("invrstna", "Reset when unavailable"), chk("invRstNotAvail", gI.rstNotAvail)));
+    b.appendChild(field(t("invrstmax", "Reset max values at midnight"), chk("invRstMaxMid", gI.rstMaxMid)));
+    b.appendChild(field(t("strtwot", "Start without time"), chk("strtWthtTm", gI.strtWthtTm)));
+    b.appendChild(field(t("rdgrid", "Read grid profile"), chk("rdGrid", gI.rdGrid)));
+
+    // ---- NTP ----
+    b = fsec(form, "NTP");
+    b.appendChild(field(t("ntpserver", "NTP server / IP"), inp("ntpAddr", ntp.addr)));
+    b.appendChild(field(t("ntpport", "NTP port"), inp("ntpPort", ntp.port, "number")));
+    b.appendChild(field(t("interval", "Interval [s]"), inp("ntpIntvl", ntp.interval, "number")));
+    var ntpAct = el("div", "btn-row");
+    var setB = el("button", "", t("ntpsetbrowser", "Set from browser")); setB.type = "button";
+    setB.addEventListener("click", function () {
+      postJSON("api/setup", { cmd: "set_time", token: token || "*", val: Math.floor(Date.now() / 1000) }, function () { toast("OK"); });
+    });
+    var syncB = el("button", "", t("ntpsync", "Sync NTP")); syncB.type = "button";
+    syncB.addEventListener("click", function () {
+      postJSON("api/setup", { cmd: "sync_ntp", token: token || "*" }, function () { toast("OK"); });
+    });
+    ntpAct.appendChild(setB); ntpAct.appendChild(syncB);
+    b.appendChild(ntpAct);
+
+    // ---- Sunrise / Sunset ----
+    b = fsec(form, t("setSun", "Sunrise / Sunset"));
+    b.appendChild(field(t("latitude", "Latitude"), inp("sunLat", sun.lat, "number")));
+    b.appendChild(field(t("longitude", "Longitude"), inp("sunLon", sun.lon, "number")));
+    var offOpts = [];
+    for (var of = -60; of <= 60; of++) offOpts.push([of, of + " min"]);
+    b.appendChild(field(t("offsetsr", "Sunrise offset"), select("sunOffsSr", offOpts, (sun.offsSr != null ? sun.offsSr / 60 : 0))));
+    b.appendChild(field(t("offsetss", "Sunset offset"), select("sunOffsSs", offOpts, (sun.offsSs != null ? sun.offsSs / 60 : 0))));
+
+    // ---- MQTT ----
+    b = fsec(form, "MQTT");
+    b.appendChild(field(t("broker", "Broker / server IP"), inp("mqttAddr", mq.broker)));
+    b.appendChild(field("Port", inp("mqttPort", mq.port, "number")));
+    b.appendChild(field("Client ID", inp("mqttClientId", mq.clientId)));
+    b.appendChild(field(t("user", "User"), inp("mqttUser", mq.user)));
+    b.appendChild(field(t("password", "Password"), inp("mqttPwd", mq.pwd, "password")));
+    b.appendChild(field("Topic", inp("mqttTopic", mq.topic)));
+    b.appendChild(field("JSON", chk("mqttJson", mq.json)));
+    b.appendChild(field(t("interval", "Interval [s]"), inp("mqttInterval", mq.interval, "number")));
+    b.appendChild(field(t("retain", "Retain"), chk("retain", mq.retain)));
+    var discRow = el("div", "btn-row");
+    var discB = el("button", "", t("mqttdiscovery", "Send HA discovery")); discB.type = "button";
+    discB.addEventListener("click", function () {
+      postJSON("api/setup", { cmd: "discovery_cfg", token: token || "*" }, function (err, j) {
+        toast((err || !j || !j.success) ? t("err", "Error") : "OK", err || !j || !j.success);
+      });
+    });
+    discRow.appendChild(discB);
+    b.appendChild(discRow);
+
+    // ---- Pinout (LEDs + NRF24) ----
+    b = fsec(form, t("setPinout", "Pinout"));
+    b.appendChild(field("LED 0 (" + t("ledproducing", "producing") + ")", select("pinLed0", ESP8266_PINS, pin.led0)));
+    b.appendChild(field("LED 1 (MQTT)", select("pinLed1", ESP8266_PINS, pin.led1)));
+    b.appendChild(field("LED 2 (" + t("lednight", "night") + ")", select("pinLed2", ESP8266_PINS, pin.led2)));
+    b.appendChild(field(t("ledpolarity", "LED polarity"), select("pinLedHighActive", [[0, t("lowactive", "low active")], [1, t("highactive", "high active")]], pin.led_high_active)));
+    b.appendChild(field(t("ledlum", "LED luminance (0-255)"), inp("pinLedLum", pin.led_lum, "number")));
+    b.appendChild(el("div", "sub", "NRF24L01+"));
+    b.appendChild(field(t("nrfenable", "NRF24 enable"), chk("nrfEnable", nrf.en)));
+    b.appendChild(field("CS", select("pinCs", ESP8266_PINS, pin.cs)));
+    b.appendChild(field("CE", select("pinCe", ESP8266_PINS, pin.ce)));
+    b.appendChild(field("IRQ", select("pinIrq", ESP8266_PINS, pin.irq)));
+
+    // ---- Serial console ----
+    b = fsec(form, t("setSerial", "Serial console"));
+    b.appendChild(field(t("logprintdata", "Print inverter data"), chk("serEn", ser.show_live_data)));
+    b.appendChild(field(t("logdebug", "Serial debug"), chk("serDbg", ser.debug)));
+    b.appendChild(field(t("logpriv", "Privacy mode"), chk("priv", ser.priv)));
+    b.appendChild(field(t("logtrace", "Print all traces"), chk("wholeTrace", ser.wholeTrace)));
+    b.appendChild(field(t("log2mqtt", "Log to MQTT"), chk("log2mqtt", ser.log2mqtt)));
+
+    // ---- Save ----
+    var save = el("div", "save-row");
+    var rebLbl = el("label", "chk");
+    var rebCb = chk("reboot", true);
+    rebLbl.appendChild(rebCb); rebLbl.appendChild(document.createTextNode(" " + t("rebootsave", "Reboot after save")));
+    save.appendChild(rebLbl);
+    var sb = el("button", "primary", t("set", "Save")); sb.type = "submit";
+    save.appendChild(sb);
+    form.appendChild(save);
+
+    root.appendChild(form);
+
+    // export / import + factory reset (reuse legacy routes verbatim). Import is a real
+    // multipart form POST to /upload (identical to legacy setup.html import), so the
+    // server-side restore path is unchanged.
+    var extra = el("div", "actions");
+    var exp = el("a", "btn-link", t("export", "Export settings")); exp.href = "/get_setup"; exp.target = "_blank";
+    extra.appendChild(exp);
+    var er = el("a", "btn-link warn", t("erase", "Factory reset")); er.href = "/erase";
+    extra.appendChild(er);
+    root.appendChild(extra);
+
+    var impForm = el("form", "imp");
+    impForm.method = "post"; impForm.action = "/upload"; impForm.enctype = "multipart/form-data"; impForm.acceptCharset = "utf-8";
+    var impFile = el("input"); impFile.type = "file"; impFile.name = "upload";
+    var impBtn = el("button", "btn-link", t("import", "Import settings")); impBtn.type = "submit"; impBtn.disabled = true;
+    impFile.addEventListener("change", function () { impBtn.disabled = !impFile.value; });
+    impForm.appendChild(impFile); impForm.appendChild(impBtn);
+    root.appendChild(impForm);
+  }
+
+  // inverter list table + add/edit → modal (save_iv). Read-only preview of configured
+  // inverters; edits go through the same /api/setup save_iv the legacy modal used.
+  function buildInvTable() {
+    var wrap = el("div", "inv-list");
+    var invs = (ivl && ivl.inverter) || [];
+    for (var i = 0; i < invs.length; i++) {
+      (function (iv) {
+        var row = el("div", "inv-row");
+        var st = el("span", "badge " + (iv.enabled ? "on" : "off"), iv.enabled ? t("enabled", "on") : t("disabled", "off"));
+        row.appendChild(st);
+        row.appendChild(el("span", "inv-n", iv.name || ("#" + iv.id)));
+        row.appendChild(el("span", "inv-s", String(iv.serial)));
+        var edit = el("button", "mini"); edit.type = "button"; edit.textContent = "✎";
+        edit.addEventListener("click", function () { invModal(iv); });
+        row.appendChild(edit);
+        wrap.appendChild(row);
+      })(invs[i]);
+    }
+    var maxN = (ivl && ivl.max_num_inverters) || 0;
+    if (invs.length < maxN) {
+      var add = el("button", "btn-link"); add.type = "button";
+      add.textContent = "+ " + t("addinv", "Add inverter");
+      add.addEventListener("click", function () {
+        invModal({ id: invs.length, name: "", enabled: true, serial: "",
+                   ch_max_pwr: [400, 400, 400, 400, 400, 400], ch_name: [], ch_yield_cor: [], pa: 1, disnightcom: false });
+      });
+      wrap.appendChild(add);
+    }
+    return wrap;
+  }
+
+  // hex serial helper for AHOY-encoded serials starting with 'A' (mirrors setup.html convHerf)
+  function convHerf(sn) {
+    var CHARS = "0123456789ABCDEFGHJKLMNPRSTUVWXY", i = 0n;
+    for (var k = 0; k < 9; ++k) {
+      var pos = CHARS.indexOf(sn[k]);
+      var shift = 42 - 5 * k - (k <= 2 ? 0 : 2);
+      i |= BigInt(pos) << BigInt(shift);
+    }
+    var f4 = (i >> 32n) & 0xFFFFn;
+    if (f4 === 0x2841n) f4 = 0x1121n; else if (f4 === 0x2821n) f4 = 0x1141n; else if (f4 === 0x2801n) f4 = 0x1161n;
+    i = (i & ~(0xFFFFn << 32n)) | (f4 << 32n);
+    return i.toString(16);
+  }
+
+  function invModal(iv) {
+    var ov = el("div", "modal-ov");
+    var box = el("div", "modal");
+    box.appendChild(el("h3", null, (iv.name ? iv.name : t("addinv", "Add inverter"))));
+
+    var enCb = chk("", iv.enabled);
+    box.appendChild(field(t("enable", "Enabled"), enCb));
+    var serI = inp("", iv.serial); serI.placeholder = "hex serial";
+    box.appendChild(field(t("serial", "Serial"), serI));
+    var nmI = inp("", iv.name);
+    box.appendChild(field(t("name", "Name"), nmI));
+    var paSel = select("", NRF_PA, iv.pa);
+    box.appendChild(field(t("powerlevel", "Power level"), paSel));
+    var dncCb = chk("", iv.disnightcom);
+    box.appendChild(field(t("pausenight", "Pause during night"), dncCb));
+
+    box.appendChild(el("div", "sub", t("strings", "Strings") + " [Wp / name / kWh corr]"));
+    var chRows = [];
+    for (var c = 0; c < 6; c++) {
+      var cr = el("div", "ch-row");
+      var pI = inp("", iv.ch_max_pwr[c], "number"); pI.className = "cp";
+      var nI = inp("", iv.ch_name[c] == null ? "" : iv.ch_name[c]); nI.className = "cn";
+      var yI = inp("", iv.ch_yield_cor[c], "number"); yI.className = "cy"; yI.step = "0.001";
+      cr.appendChild(el("span", "ci", String(c + 1)));
+      cr.appendChild(pI); cr.appendChild(nI); cr.appendChild(yI);
+      chRows.push([pI, nI, yI]);
+      box.appendChild(cr);
+    }
+
+    var res = el("div", "modal-res");
+    box.appendChild(res);
+    var brow = el("div", "btn-row");
+    var cancel = el("button", "", t("cancel", "Cancel")); cancel.type = "button";
+    cancel.addEventListener("click", function () { document.body.removeChild(ov); });
+    var savb = el("button", "primary", t("set", "Save")); savb.type = "button";
+    savb.addEventListener("click", function () {
+      var sn = serI.value.trim();
+      if (sn[0] === "A") sn = convHerf(sn);
+      var o = { cmd: "save_iv", token: token || "*", id: iv.id,
+                ser: parseInt(sn, 16), name: nmI.value, en: enCb.checked,
+                disnightcom: dncCb.checked, pa: parseInt(paSel.value, 10), ch: [] };
+      for (var c = 0; c < 6; c++)
+        o.ch.push({ pwr: chRows[c][0].value, name: chRows[c][1].value, yld: chRows[c][2].value });
+      postJSON("api/setup", o, function (err, j) {
+        if (err || !j || !j.success) { res.textContent = (j && j.error) || t("err", "Error"); res.className = "modal-res bad"; return; }
+        document.body.removeChild(ov);
+        toast("OK");
+        ivl = null; loadSetup();   // refresh the list
+      });
+    });
+    brow.appendChild(cancel); brow.appendChild(savb);
+    box.appendChild(brow);
+    ov.appendChild(box);
+    ov.addEventListener("click", function (e) { if (e.target === ov) document.body.removeChild(ov); });
+    document.body.appendChild(ov);
+  }
+
+  // ============================================================================
+  // Slice 4e — web-serial console + OTA firmware upload, ported natively.
+  // ============================================================================
+  var serialSource = null;    // EventSource for the /events serial stream
+  var serialBuf = "";         // accumulated console text (survives view rebuilds)
+  var serialAuto = true;
+
+  function startSerial() {
+    if (serialSource || !window.EventSource) return;
+    serialSource = new EventSource("/events");
+    serialSource.addEventListener("open", function () { setSerialDot(true); }, false);
+    serialSource.addEventListener("error", function (e) {
+      if (e.target.readyState !== EventSource.OPEN) setSerialDot(false);
+    }, false);
+    serialSource.addEventListener("serial", function (e) {
+      serialBuf += e.data.replace(/<rn>/g, "\r\n");
+      if (serialBuf.length > 60000) serialBuf = serialBuf.slice(-40000); // bound memory
+      var ta = $("#serTa");
+      if (ta) { ta.value = serialBuf; if (serialAuto) ta.scrollTop = ta.scrollHeight; }
+    }, false);
+    // tell the device our UTC offset so timestamps are local (mirrors serial.html)
+    postJSON("api/setup", { cmd: "serial_utc_offset", val: new Date().getTimezoneOffset() * -60 }, function () {});
+  }
+  function stopSerial() {
+    if (serialSource) { serialSource.close(); serialSource = null; }
+  }
+  function setSerialDot(on) {
+    var d = $("#serDot");
+    if (d) d.className = "dot " + (on ? "live" : "stale");
+  }
+
+  function renderSerial(root) {
+    root.innerHTML = "";
+    root.classList.remove("stale");
+    var head = el("div", "ser-head");
+    head.appendChild(el("span", null, t("console", "Console")));
+    head.appendChild(el("span", "dot", "")); head.lastChild.id = "serDot";
+    root.appendChild(head);
+    var ta = el("textarea", "ser-ta"); ta.id = "serTa"; ta.readOnly = true; ta.value = serialBuf;
+    root.appendChild(ta);
+    var row = el("div", "btn-row");
+    var clr = el("button", "", t("clear", "Clear")); clr.type = "button";
+    clr.addEventListener("click", function () { serialBuf = ""; ta.value = ""; });
+    var scr = el("button", "", t("autoscroll", "Autoscroll")); scr.type = "button";
+    scr.addEventListener("click", function () { serialAuto = !serialAuto; scr.classList.toggle("off", !serialAuto); });
+    var cpy = el("button", "", t("copy", "Copy")); cpy.type = "button";
+    cpy.addEventListener("click", function () {
+      ta.select();
+      try { document.execCommand("copy"); toast("OK"); } catch (e) { toast(t("err", "Error"), true); }
+    });
+    row.appendChild(clr); row.appendChild(scr); row.appendChild(cpy);
+    root.appendChild(row);
+    if (serialAuto) ta.scrollTop = ta.scrollHeight;
+  }
+
+  // ---- OTA firmware upload (faithful port of update.html: X-MD5 integrity, env
+  // guard, XHR progress, success-on-socket-drop-after-upload semantics) ----
+  var otaEnv = null;
+  function renderUpdate(root) {
+    root.innerHTML = "";
+    root.classList.remove("stale");
+    if (otaEnv == null) getJSON("api/generic", function (err, j) { if (!err && j) { otaEnv = j.env; renderUpdate($("#view")); } });
+
+    var box = el("div", "ota");
+    box.appendChild(el("div", "sec-h", t("selectfile", "Select firmware (*.bin)")));
+    if (meta) box.appendChild(el("div", "sub", t("installed", "Installed") + ": " + meta.version + " (" + meta.build + ")" + (otaEnv ? " · " + otaEnv : "")));
+    var fileWrap = el("div", "fld");
+    var file = el("input"); file.type = "file"; file.id = "otaFile"; file.accept = ".bin";
+    fileWrap.appendChild(file);
+    box.appendChild(fileWrap);
+    var status = el("div", "ota-status"); status.id = "otaStatus";
+    box.appendChild(status);
+    var btn = el("button", "primary", t("update", "Update")); btn.type = "button"; btn.disabled = true;
+    file.addEventListener("change", function () { btn.disabled = !file.value; });
+    btn.addEventListener("click", function () { otaHide(file, status); });
+    box.appendChild(btn);
+    var dl = el("a", "btn-link", t("downloads", "Downloads"));
+    dl.href = "https://github.com/JustChr/ahoy/releases/latest"; dl.target = "_blank";
+    box.appendChild(dl);
+    root.appendChild(box);
+  }
+
+  // env-mismatch / dev-version guard before uploading (mirrors update.html hide())
+  function otaHide(file, status) {
+    var fw = file.value;
+    var parts = fw.split("_");
+    var bin = (otaEnv && fw.length >= otaEnv.length + 4) ? fw.slice(-otaEnv.length - 4, -4) : "";
+    var ver = (parts.length > 2) ? parts[2].split(".") : null;
+    if (ver && ver[1] === "9") { toast(t("otanotpossible", "Upgrade not possible from this file"), true); return; }
+    if (bin !== otaEnv && otaEnv) {
+      if (!confirm(t("otadiffenv", "This firmware is for a different device type. Continue anyway?"))) return;
+    }
+    otaStart(file, status);
+  }
+
+  function otaStart(file, status) {
+    if (!file.files || !file.files[0]) return;
+    var f = file.files[0];
+    status.textContent = t("otastarted", "Update started…");
+    var reader = new FileReader();
+    reader.onload = function () {
+      var md5 = null;
+      try { md5 = md5FromBytes(new Uint8Array(reader.result)); } catch (e) { md5 = null; }
+      otaSend(f, status, md5);
+    };
+    reader.onerror = function () { otaSend(f, status, null); };
+    reader.readAsArrayBuffer(f);
+  }
+
+  function otaSend(f, status, md5) {
+    var fd = new FormData(); fd.append("update", f);
+    var xhr = new XMLHttpRequest();
+    var uploaded = false;
+    xhr.open("POST", "/update");
+    if (md5) xhr.setRequestHeader("X-MD5", md5);
+    xhr.upload.addEventListener("progress", function (e) {
+      if (e.lengthComputable) status.textContent = t("otastarted", "Update started…") + " (" + Math.round(e.loaded / e.total * 100) + "%)";
+    });
+    xhr.upload.addEventListener("load", function () { uploaded = true; });
+    function finish(ok) {
+      if (ok) { status.textContent = t("otarebooting", "Uploaded — device rebooting…"); setTimeout(function () { location.href = "/app"; }, 20000); }
+      else status.textContent = t("otafailed", "Update failed — still on previous firmware. Please retry.");
+    }
+    xhr.addEventListener("load", function () { finish(xhr.status >= 200 && xhr.status < 300); });
+    xhr.addEventListener("error", function () { finish(uploaded); });
+    xhr.addEventListener("timeout", function () { finish(uploaded); });
+    xhr.send(fd);
+  }
+
+  // bluimp MD5 over raw bytes (SubtleCrypto lacks MD5) — verbatim from update.html so the
+  // X-MD5 the device checks matches the curl path exactly. Do not "simplify".
+  function md5FromBytes(bytes) {
+    function safeAdd(x, y) { var lsw = (x & 0xffff) + (y & 0xffff); var msw = (x >> 16) + (y >> 16) + (lsw >> 16); return (msw << 16) | (lsw & 0xffff); }
+    function rol(n, c) { return (n << c) | (n >>> (32 - c)); }
+    function cmn(q, a, b, x, s, t2) { return safeAdd(rol(safeAdd(safeAdd(a, q), safeAdd(x, t2)), s), b); }
+    function ff(a, b, c, d, x, s, t2) { return cmn((b & c) | (~b & d), a, b, x, s, t2); }
+    function gg(a, b, c, d, x, s, t2) { return cmn((b & d) | (c & ~d), a, b, x, s, t2); }
+    function hh(a, b, c, d, x, s, t2) { return cmn(b ^ c ^ d, a, b, x, s, t2); }
+    function ii(a, b, c, d, x, s, t2) { return cmn(c ^ (b | ~d), a, b, x, s, t2); }
+    var lenBits = bytes.length * 8;
+    var x = new Int32Array((((lenBits + 64) >>> 9) << 4) + 16);
+    for (var i = 0; i < bytes.length; i++) x[i >> 2] |= bytes[i] << ((i % 4) * 8);
+    x[lenBits >> 5] |= 0x80 << (lenBits % 32);
+    x[(((lenBits + 64) >>> 9) << 4) + 14] = lenBits;
+    var a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
+    for (i = 0; i < x.length; i += 16) {
+      var oa = a, ob = b, oc = c, od = d;
+      a=ff(a,b,c,d,x[i],7,-680876936);    d=ff(d,a,b,c,x[i+1],12,-389564586);
+      c=ff(c,d,a,b,x[i+2],17,606105819);  b=ff(b,c,d,a,x[i+3],22,-1044525330);
+      a=ff(a,b,c,d,x[i+4],7,-176418897);  d=ff(d,a,b,c,x[i+5],12,1200080426);
+      c=ff(c,d,a,b,x[i+6],17,-1473231341);b=ff(b,c,d,a,x[i+7],22,-45705983);
+      a=ff(a,b,c,d,x[i+8],7,1770035416);  d=ff(d,a,b,c,x[i+9],12,-1958414417);
+      c=ff(c,d,a,b,x[i+10],17,-42063);    b=ff(b,c,d,a,x[i+11],22,-1990404162);
+      a=ff(a,b,c,d,x[i+12],7,1804603682); d=ff(d,a,b,c,x[i+13],12,-40341101);
+      c=ff(c,d,a,b,x[i+14],17,-1502002290);b=ff(b,c,d,a,x[i+15],22,1236535329);
+      a=gg(a,b,c,d,x[i+1],5,-165796510);  d=gg(d,a,b,c,x[i+6],9,-1069501632);
+      c=gg(c,d,a,b,x[i+11],14,643717713); b=gg(b,c,d,a,x[i],20,-373897302);
+      a=gg(a,b,c,d,x[i+5],5,-701558691);  d=gg(d,a,b,c,x[i+10],9,38016083);
+      c=gg(c,d,a,b,x[i+15],14,-660478335);b=gg(b,c,d,a,x[i+4],20,-405537848);
+      a=gg(a,b,c,d,x[i+9],5,568446438);   d=gg(d,a,b,c,x[i+14],9,-1019803690);
+      c=gg(c,d,a,b,x[i+3],14,-187363961); b=gg(b,c,d,a,x[i+8],20,1163531501);
+      a=gg(a,b,c,d,x[i+13],5,-1444681467);d=gg(d,a,b,c,x[i+2],9,-51403784);
+      c=gg(c,d,a,b,x[i+7],14,1735328473); b=gg(b,c,d,a,x[i+12],20,-1926607734);
+      a=hh(a,b,c,d,x[i+5],4,-378558);     d=hh(d,a,b,c,x[i+8],11,-2022574463);
+      c=hh(c,d,a,b,x[i+11],16,1839030562);b=hh(b,c,d,a,x[i+14],23,-35309556);
+      a=hh(a,b,c,d,x[i+1],4,-1530992060); d=hh(d,a,b,c,x[i+4],11,1272893353);
+      c=hh(c,d,a,b,x[i+7],16,-155497632); b=hh(b,c,d,a,x[i+10],23,-1094730640);
+      a=hh(a,b,c,d,x[i+13],4,681279174);  d=hh(d,a,b,c,x[i],11,-358537222);
+      c=hh(c,d,a,b,x[i+3],16,-722521979); b=hh(b,c,d,a,x[i+6],23,76029189);
+      a=hh(a,b,c,d,x[i+9],4,-640364487);  d=hh(d,a,b,c,x[i+12],11,-421815835);
+      c=hh(c,d,a,b,x[i+15],16,530742520); b=hh(b,c,d,a,x[i+2],23,-995338651);
+      a=ii(a,b,c,d,x[i],6,-198630844);    d=ii(d,a,b,c,x[i+7],10,1126891415);
+      c=ii(c,d,a,b,x[i+14],15,-1416354905);b=ii(b,c,d,a,x[i+5],21,-57434055);
+      a=ii(a,b,c,d,x[i+12],6,1700485571); d=ii(d,a,b,c,x[i+3],10,-1894986606);
+      c=ii(c,d,a,b,x[i+10],15,-1051523);  b=ii(b,c,d,a,x[i+1],21,-2054922799);
+      a=ii(a,b,c,d,x[i+8],6,1873313359);  d=ii(d,a,b,c,x[i+15],10,-30611744);
+      c=ii(c,d,a,b,x[i+6],15,-1560198380);b=ii(b,c,d,a,x[i+13],21,1309151649);
+      a=ii(a,b,c,d,x[i+4],6,-145523070);  d=ii(d,a,b,c,x[i+11],10,-1120210379);
+      c=ii(c,d,a,b,x[i+2],15,718787259);  b=ii(b,c,d,a,x[i+9],21,-343485551);
+      a=safeAdd(a,oa); b=safeAdd(b,ob); c=safeAdd(c,oc); d=safeAdd(d,od);
+    }
+    var hex = "0123456789abcdef", out = "";
+    for (var wi = 0; wi < 4; wi++) {
+      var w = [a, b, c, d][wi];
+      for (var s = 0; s < 32; s += 8) { var bv = (w >>> s) & 0xff; out += hex[(bv >> 4) & 0xf] + hex[bv & 0xf]; }
+    }
+    return out;
   }
 
   // ---- lifecycle ----
