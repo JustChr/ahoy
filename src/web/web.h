@@ -21,16 +21,10 @@
 #include "html/h/grid_info_json.h"
 #include "html/h/index_html.h"
 #include "html/h/login_html.h"
-#include "html/h/serial_html.h"
-#include "html/h/setup_html.h"
 #include "html/h/style_css.h"
 #include "html/h/system_html.h"
 #include "html/h/save_html.h"
-#include "html/h/update_html.h"
-#include "html/h/visualization_html.h"
-#include "html/h/about_html.h"
 #include "html/h/wizard_html.h"
-#include "html/h/history_html.h"
 #include "html/h/app_html.h"
 #include "html/h/app_css.h"
 #include "html/h/app_js.h"
@@ -79,13 +73,11 @@ class Web {
             mWeb.on("/factory",        HTTP_ANY,  std::bind(&Web::showHtml,       this, std::placeholders::_1));
             mWeb.on("/factorytrue",    HTTP_ANY,  std::bind(&Web::showHtml,       this, std::placeholders::_1));
 
-            mWeb.on("/setup",          HTTP_GET,  std::bind(&Web::onSetup,        this, std::placeholders::_1));
+            // legacy /setup page retired → SPA #/settings; /save (POST) handler kept below
             mWeb.on("/wizard",         HTTP_GET,  std::bind(&Web::onWizard,       this, std::placeholders::_1));
             mWeb.on("/generate_204",   HTTP_GET,  std::bind(&Web::onWizard,       this, std::placeholders::_1));   //Android captive portal
             mWeb.on("/save",           HTTP_POST, std::bind(&Web::showSave,       this, std::placeholders::_1));
-
-            mWeb.on("/live",           HTTP_ANY,  std::bind(&Web::onLive,         this, std::placeholders::_1));
-            mWeb.on("/history",        HTTP_ANY, std::bind(&Web::onHistory,       this, std::placeholders::_1));
+            // legacy /live + /history pages retired → SPA #/now (REST /api/* kept as compat shim, §11.1)
 
         #ifdef ENABLE_PROMETHEUS_EP
             mWeb.on("/metrics",        HTTP_ANY,  std::bind(&Web::showMetrics,    this, std::placeholders::_1));
@@ -93,12 +85,9 @@ class Web {
 
             mWeb.on("/update",         HTTP_POST, std::bind(&Web::showUpdate,     this, std::placeholders::_1),
                                                   std::bind(&Web::showUpdate2,    this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
-            mWeb.on("/update",         HTTP_GET,  std::bind(&Web::onUpdate,       this, std::placeholders::_1));
+            // legacy /update + /serial GET pages retired → SPA #/update + #/serial; POST/upload + /events kept
             mWeb.on("/upload",         HTTP_POST, std::bind(&Web::onUpload,       this, std::placeholders::_1),
                                                   std::bind(&Web::onUpload2,      this, std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
-            mWeb.on("/serial",         HTTP_GET,  std::bind(&Web::onSerial,       this, std::placeholders::_1));
-            mWeb.on("/about",          HTTP_GET,  std::bind(&Web::onAbout,        this, std::placeholders::_1));
-            mWeb.on("/debug",          HTTP_GET,  std::bind(&Web::onDebug,        this, std::placeholders::_1));
 
 
             mEvts.onConnect(std::bind(&Web::onConnect, this, std::placeholders::_1));
@@ -338,16 +327,16 @@ class Web {
             request->send(response);
         }
 
-        void onUpdate(AsyncWebServerRequest *request) {
-            getPage(request, PROT_MASK_UPDATE, update_html, update_html_len);
-        }
 
         void showUpdate(AsyncWebServerRequest *request) {
             #if defined(ETHERNET)
             // workaround for AsyncWebServer_ESP32_W5500, because it can't distinguish
-            // between HTTP_GET and HTTP_POST if both are registered
-            if(request->method() == HTTP_GET)
-                onUpdate(request);
+            // between HTTP_GET and HTTP_POST if both are registered. Legacy /update page
+            // is retired → send a GET to the SPA update view.
+            if(request->method() == HTTP_GET) {
+                request->redirect("/app");
+                return;
+            }
             #endif
 
             // only claim success (and only reboot) if Update.end() actually finalized a whole,
@@ -531,7 +520,16 @@ class Web {
         void showNotFound(AsyncWebServerRequest *request) {
             checkProtection(request);
             //DBGPRINTLN(request->url());
-            request->redirect("/wizard");
+            // AP/first-run: captive portal → wizard. Otherwise send stale legacy links
+            // (retired pages) to the SPA instead of the WiFi setup wizard.
+            #if !defined(ETHERNET)
+            if(mApp->isApActive())
+                request->redirect("/wizard");
+            else
+                request->redirect("/app");
+            #else
+            request->redirect("/app");
+            #endif
         }
 
         void onReboot(AsyncWebServerRequest *request) {
@@ -547,10 +545,6 @@ class Web {
             AsyncWebServerResponse *response = beginResponse(request, 200, F("text/html; charset=UTF-8"), system_html, system_html_len);
             response->addHeader(F("Content-Encoding"), "gzip");
             request->send(response);
-        }
-
-        void onSetup(AsyncWebServerRequest *request) {
-            getPage(request, PROT_MASK_SETUP, setup_html, setup_html_len);
         }
 
         void onWizard(AsyncWebServerRequest *request) {
@@ -756,35 +750,6 @@ class Web {
             AsyncWebServerResponse *response = beginResponse(request, 200, F("text/html; charset=UTF-8"), save_html, save_html_len);
             response->addHeader(F("Content-Encoding"), "gzip");
             request->send(response);
-        }
-
-        void onLive(AsyncWebServerRequest *request) {
-            getPage(request, PROT_MASK_LIVE, visualization_html, visualization_html_len);
-        }
-
-        void onHistory(AsyncWebServerRequest *request) {
-            getPage(request, PROT_MASK_HISTORY, history_html, history_html_len);
-        }
-
-        void onAbout(AsyncWebServerRequest *request) {
-            AsyncWebServerResponse *response = beginResponse(request, 200, F("text/html; charset=UTF-8"), about_html, about_html_len);
-            response->addHeader(F("Content-Encoding"), "gzip");
-            response->addHeader(F("content-type"), "text/html; charset=UTF-8");
-            if(request->hasParam("v")) {
-                response->addHeader(F("Cache-Control"), F("max-age=604800"));
-            }
-
-            request->send(response);
-        }
-
-        void onDebug(AsyncWebServerRequest *request) {
-            mApp->getSchedulerNames();
-            AsyncWebServerResponse *response = request->beginResponse(200, F("text/html; charset=UTF-8"), "ok");
-            request->send(response);
-        }
-
-        void onSerial(AsyncWebServerRequest *request) {
-            getPage(request, PROT_MASK_SERIAL, serial_html, serial_html_len);
         }
 
         void onSystem(AsyncWebServerRequest *request) {
