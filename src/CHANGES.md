@@ -1,3 +1,7 @@
+Changelog v0.8.185 (JustChr fork)
+
+* Net: fix an out-of-bounds read when parsing NTP replies. handleNTPPacket copied a fixed 80 bytes out of the received datagram regardless of its actual length, over-reading past the packet buffer on any shorter/malformed reply. The copy is now clamped to the datagram length and the buffer zero-padded, so the fixed field offsets stay well-defined. (First OTA-verified update on the 0.8.184 OTA-hardening.)
+
 Changelog v0.8.184 (JustChr fork)
 
 * OTA: reclaim a dropped flash. If the upload connection died mid-transfer, the final callback never ran, so the ESP8266 Updater's ~7 KB sector buffer leaked and the whole OTA-quiesce (data endpoints returning 503, RF + MQTT stood down, WiFi self-heal paused) lingered until the 5-minute network failsafe - leaving the device on reduced heap and making the retry likelier to fail too (the 0.8.180 death-spiral). A stall watchdog now runs in loop context: if no upload chunk arrives for 12 s it aborts Update (freeing the buffer), stays on the current firmware, and clears the OTA flag so every quiesced subsystem restores within seconds. The flag is now cleared on all four terminal paths (success, pre-flight deny, finalize-fail, and this new drop case).

@@ -311,7 +311,13 @@ class AhoyNetwork {
         void handleNTPPacket(AsyncUDPPacket packet) {
             char buf[80];
 
-            memcpy(buf, packet.data(), sizeof(buf));
+            // clamp to the actual datagram length: a reply shorter than buf would
+            // otherwise over-read past packet.data(). Zero-pad the rest so the fixed
+            // offsets below stay well-defined on a short/malformed packet.
+            size_t n = packet.length();
+            if(n > sizeof(buf)) n = sizeof(buf);
+            memset(buf, 0, sizeof(buf));
+            memcpy(buf, packet.data(), n);
 
             unsigned long highWord = word(buf[40], buf[41]);
             unsigned long lowWord = word(buf[42], buf[43]);
