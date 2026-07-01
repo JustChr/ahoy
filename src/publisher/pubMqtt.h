@@ -262,6 +262,13 @@ class PubMqtt {
             if(!mClient.connected()) // prevent overflow if MQTT broker is not reachable but set
                 return;
 
+            // OTA = global quiesce (§10.3): never publish MQTT while a flash is in progress.
+            // publishHotPower() below publishes synchronously in this event callback, which —
+            // unlike the old queue that mMqtt.loop() drains (and app.cpp gates on OTA) — would
+            // otherwise contend for the tiny heap during Update and stall/fail the upload.
+            if((nullptr != mApp) && mApp->isOtaActive())
+                return;
+
             if(0 != mCfgMqtt->interval) {
                 // fixed-interval mode: live data goes out on the timer (tickerSecond), only
                 // enqueue the non-live commands here (unchanged behaviour).
