@@ -402,6 +402,8 @@ Honest framing: default users get **fresher MQTT, never slower than today** (tod
 
 **Coupling:** faster RF ⇒ more frequent publishes ⇒ more publish load. This is why §10.3's chunked/time-boxed publish + heavy-op token exist — they let the data rate rise *without* the extra publishes destabilising the device. The two are designed together.
 
+**OBSERVED REGRESSION + FIX (2026-07-01, device on v0.8.178).** The coupling above bit in practice: user reported "regular dropouts". Live diag (`/api/system`) showed `reboot_reason = "Software Watchdog"`, `boot_cnt = 22`, and MQTT `tx_cnt` climbing **~17 msg/s** (full ~40-field set × 2 iv on every ~3 s adaptive receive), fragmenting the 14 KB heap (frag 2→12 %, `blk_min` 14376→12512) until a publish drain stalled `loop()` past the soft-WDT (~3 s) → reboot (~13 s offline each = the "dropouts"). **User's insight: don't need every field fresh — only per-inverter power + total power.** Fix (v0.8.180, `pubMqtt.h::payloadEventListener` + new `publishHotPower`): in event-driven mode (`interval==0`) publish only the **hot power topics** (`<name>/ch0/P_AC` + `total/P_AC` — the *same* topics, no new ones, HA-transparent) on every receive, and throttle the **full field-set** to `MQTT_LIVE_FULL_S = 15 s`. Forced/`nullptr` recalc triggers + availability changes still publish the full set immediately. Cuts steady-state MQTT ~17/s → ~6/s while keeping power fresh at the fast RF cadence. Builds clean; **needs on-device confirmation the WDT reboots stop.** Immediate no-reflash mitigation offered to user: set `mqtt.interval = 15`.
+
 ---
 
 ## 13. Settings migration approach

@@ -259,10 +259,59 @@ class PubMqtt {
         }
 
         void payloadEventListener(uint8_t cmd, Inverter<> *iv) {
-            if(mClient.connected()) { // prevent overflow if MQTT broker is not reachable but set
-                if((0 == mCfgMqtt->interval) || (RealTimeRunData_Debug != cmd)) // no interval or no live data
+            if(!mClient.connected()) // prevent overflow if MQTT broker is not reachable but set
+                return;
+
+            if(0 != mCfgMqtt->interval) {
+                // fixed-interval mode: live data goes out on the timer (tickerSecond), only
+                // enqueue the non-live commands here (unchanged behaviour).
+                if(RealTimeRunData_Debug != cmd)
                     mSendList.push(sendListCmdIv(cmd, iv));
+                return;
             }
+
+            // event-driven mode (interval==0): keep power fresh every cycle, throttle the
+            // full field-set so a fast RF cadence can't flood MQTT / churn the heap. Only the
+            // per-inverter live floods (iv != nullptr) are throttled; a nullptr cmd is a forced
+            // "values changed / recalc totals" trigger (app.cpp) and always publishes the full set.
+            if((RealTimeRunData_Debug == cmd) && (nullptr != iv)) {
+                publishHotPower(iv);                        // per-iv P_AC + total P_AC, every receive
+                if((nullptr != mUptime) && ((*mUptime - mLastFullPub) < MQTT_LIVE_FULL_S))
+                    return;                                 // full set not due yet
+                mLastFullPub = (nullptr != mUptime) ? *mUptime : 0;
+            }
+            mSendList.push(sendListCmdIv(cmd, iv));
+        }
+
+        // Publish just the "hot" power topics (used to keep power fresh at fast RF cadence
+        // without republishing every field). Uses the SAME topics the full set does
+        // (`<name>/ch0/P_AC`, `total/P_AC`) so HA/consumers see no new topics. non-JSON only;
+        // JSON-mode users still get the full `ch0`/`total` JSON via the throttled full set.
+        void publishHotPower(Inverter<> *iv) {
+            if(mCfgMqtt->json)
+                return;
+
+            if(nullptr != iv) {
+                record_t<> *rec = iv->getRecordStruct(RealTimeRunData_Debug);
+                if(nullptr != rec) {
+                    snprintf(mSubTopic.data(), mSubTopic.size(), "%s/ch0/%s", iv->config->name, fields[FLD_PAC]);
+                    snprintf(mVal.data(), mVal.size(), "%g", ah::round3(iv->getChannelFieldValue(CH0, FLD_PAC, rec)));
+                    publish(mSubTopic.data(), mVal.data(), false);
+                }
+            }
+
+            float total = 0;
+            for(uint8_t i = 0; i < MAX_NUM_INVERTERS; i++) {
+                Inverter<> *iv2 = mSys->getInverterByPos(i);
+                if((nullptr == iv2) || (!iv2->config->enabled) || (iv2->getStatus() == InverterStatus::OFF))
+                    continue;
+                record_t<> *rec2 = iv2->getRecordStruct(RealTimeRunData_Debug);
+                if(nullptr != rec2)
+                    total += iv2->getChannelFieldValue(CH0, FLD_PAC, rec2);
+            }
+            snprintf(mSubTopic.data(), mSubTopic.size(), "total/%s", fields[FLD_PAC]);
+            snprintf(mVal.data(), mVal.size(), "%g", ah::round3(total));
+            publish(mSubTopic.data(), mVal.data(), false);
         }
 
         void alarmEvent(Inverter<> *iv) {
@@ -874,6 +923,12 @@ class PubMqtt {
         std::array<InverterStatus, MAX_NUM_INVERTERS> mLastIvState;
         std::array<uint32_t, MAX_NUM_INVERTERS> mIvLastRTRpub;
         uint16_t mIntervalTimeout = 0;
+        uint32_t mLastFullPub = 0;      // uptime[s] of last full field-set push (interval==0 split)
+        // When interval==0 (event-driven), an adaptive/fast RF cadence would otherwise
+        // publish the whole ~40-field set on every receive (~every 3s), flooding the
+        // broker and churning the ESP8266 heap (soft-WDT risk). Instead publish only the
+        // hot power topics every cycle and the full set no more often than this.
+        static constexpr uint32_t MQTT_LIVE_FULL_S = 15;
 
         std::queue<message_s> mReceiveQueue;
 
