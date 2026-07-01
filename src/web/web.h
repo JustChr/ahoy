@@ -420,7 +420,11 @@ class Web {
                 return;
             }
             #endif
-            getPage(request, PROT_MASK_INDEX, index_html, index_html_len);
+            // Legacy dashboard retired: the SPA at /app is now the default UI (parity
+            // verified on-device, §11.5). First-run AP/wizard above is untouched. Legacy
+            // pages remain individually reachable but nothing links to them, so they no
+            // longer load in normal use (no legacy heap allocations).
+            request->redirect(F("/app"));
         }
 
         void onLogin(AsyncWebServerRequest *request) {
